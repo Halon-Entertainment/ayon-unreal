@@ -177,20 +177,24 @@ class UnrealPrelaunchHook(PreLaunchHook):
         # in various places inside c++ code and there variable names cannot
         # start with non-alpha. We append 'P' before project name to solve it.
         # 😱
+        unreal_folder_name = self.data['project_settings']['unreal'].get('project_folder')
+        self.log.debug(self.data)
         if not unreal_project_name[:1].isalpha():
             self.log.warning((
                 "Project name doesn't start with alphabet "
                 f"character ({unreal_project_name}). Appending 'P'"
             ))
-            unreal_project_name = f"P{unreal_project_name}"
+            unreal_folder_name = self.data.get('project_folder')
+            unreal_project_name = f"P{unreal_folder_name}"
             unreal_project_filename = f'{unreal_project_name}.uproject'
 
         last_workfile_path = self.data.get("last_workfile_path")
+        self.log.debug(last_workfile_path)
         if last_workfile_path and os.path.exists(last_workfile_path):
             project_path = Path(os.path.dirname(last_workfile_path))
             unreal_project_filename = Path(os.path.basename(last_workfile_path))
         else:
-            project_path = Path(os.path.join(workdir, unreal_project_name))
+            project_path = Path(os.path.join(workdir, unreal_folder_name))
             project_path.mkdir(parents=True, exist_ok=True)
 
         self.log.info((

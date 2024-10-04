@@ -20,6 +20,11 @@ def _render_format_enum():
 
 
 class UnrealSettings(BaseSettingsModel):
+    project_folder: str = SettingsField(
+        "{project[name]}",
+        title="Project Folder",
+        description="Project Folder"
+    )
     imageio: UnrealImageIOModel = SettingsField(
         default_factory=UnrealImageIOModel,
         title="Color Management (ImageIO)"
