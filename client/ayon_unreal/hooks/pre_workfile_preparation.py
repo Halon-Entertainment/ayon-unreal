@@ -178,7 +178,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
         # start with non-alpha. We append 'P' before project name to solve it.
         # 😱
         unreal_folder_name = self.data['project_settings']['unreal'].get('project_folder')
-        self.log.debug(self.data)
         if not unreal_project_name[:1].isalpha():
             self.log.warning((
                 "Project name doesn't start with alphabet "
