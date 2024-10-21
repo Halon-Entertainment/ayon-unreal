@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from qtpy import QtCore
+from qtpy import QtCore, QtWidgets
 
 from ayon_core import resources
 from ayon_applications import (
@@ -233,26 +233,34 @@ class UnrealPrelaunchHook(PreLaunchHook):
                 self.exec_plugin_install(engine_path)
 
         project_file = project_path / unreal_project_filename
+        if self.data['project_settings']['unreal'].get('allow_project_creation'):
+            if not project_file.is_file():
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    self.exec_ue_project_gen(engine_version,
+                                            unreal_project_name,
+                                            engine_path,
+                                            Path(temp_dir))
+                    try:
+                        self.log.info((
+                            f"Moving from {temp_dir} to "
+                            f"{project_path.as_posix()}"
+                        ))
+                        shutil.copytree(
+                            temp_dir, project_path, dirs_exist_ok=True)
 
-        if not project_file.is_file():
-            with tempfile.TemporaryDirectory() as temp_dir:
-                self.exec_ue_project_gen(engine_version,
-                                         unreal_project_name,
-                                         engine_path,
-                                         Path(temp_dir))
-                try:
-                    self.log.info((
-                        f"Moving from {temp_dir} to "
-                        f"{project_path.as_posix()}"
-                    ))
-                    shutil.copytree(
-                        temp_dir, project_path, dirs_exist_ok=True)
+                    except shutil.Error as e:
+                        raise ApplicationLaunchFailed((
+                            f"{self.signature} Cannot copy directory {temp_dir} "
+                            f"to {project_path.as_posix()} - {e}"
+                        )) from e
 
-                except shutil.Error as e:
-                    raise ApplicationLaunchFailed((
-                        f"{self.signature} Cannot copy directory {temp_dir} "
-                        f"to {project_path.as_posix()} - {e}"
-                    )) from e
+        if not project_file.exists():
+            msg =("Ayon unreal project creation has been disabled for this project. "
+                                            "Please make sure your project has been synced.")
+            raise ApplicationLaunchFailed(msg)
+
+
+
 
         self.launch_context.env["AYON_UNREAL_VERSION"] = engine_version
         # Append project file to launch arguments

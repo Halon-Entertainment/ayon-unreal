@@ -8,6 +8,11 @@ class ProjectSetup(BaseSettingsModel):
         False,
         title="Dev mode"
     )
+    allow_project_creation: bool = SettingsField(
+        False,
+        title="Allow Project Creation",
+        description="Allows Ayon to create the unreal project."
+    )
 
 
 def _render_format_enum():
