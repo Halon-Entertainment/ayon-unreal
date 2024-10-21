@@ -255,12 +255,11 @@ class UnrealPrelaunchHook(PreLaunchHook):
                         )) from e
 
         if not project_file.exists():
-            msg =("Ayon unreal project creation has been disabled for this project. "
-                                            "Please make sure your project has been synced.")
+            msg = (
+                "Ayon unreal project creation has been disabled for this project. "
+                "Please make sure your project has been synced."
+            )
             raise ApplicationLaunchFailed(msg)
-
-
-
 
         self.launch_context.env["AYON_UNREAL_VERSION"] = engine_version
         # Append project file to launch arguments
