@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from qtpy import QtCore, QtWidgets
+from qtpy import QtCore
 
 from ayon_core import resources
 from ayon_applications import (
