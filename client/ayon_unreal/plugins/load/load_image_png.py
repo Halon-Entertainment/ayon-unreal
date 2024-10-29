@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Load Static meshes form FBX."""
+"""Load textures from PNG."""
 import os
-
 from ayon_core.pipeline import (
     get_representation_path,
     AYON_CONTAINER_ID
@@ -13,36 +12,35 @@ from ayon_unreal.api.pipeline import (
     has_asset_directory_pattern_matched,
     format_asset_directory
 )
+
 import unreal  # noqa
 
 
-class StaticMeshFBXLoader(plugin.Loader):
-    """Load Unreal StaticMesh from FBX."""
+class TexturePNGLoader(plugin.Loader):
+    """Load Unreal texture from PNG file."""
 
-    product_types = {"model", "staticMesh"}
-    label = "Import FBX Static Mesh"
-    representations = {"fbx"}
-    icon = "cube"
+    product_types = {"image", "texture", "render"}
+    label = "Import image texture 2d"
+    representations = {"*"}
+    extensions = {"png", "jpg", "tiff"}
+    icon = "wallpaper"
     color = "orange"
 
+    # Defined by settings
     use_interchange = False
-    use_nanite = True
     show_dialog = False
     pipeline_path = ""
     loaded_asset_dir = "{folder[path]}/{product[name]}_{version[version]}"
 
     @classmethod
     def apply_settings(cls, project_settings):
-        super(StaticMeshFBXLoader, cls).apply_settings(project_settings)
-        # Apply import settings
+        super(TexturePNGLoader, cls).apply_settings(project_settings)
         unreal_settings = project_settings.get("unreal", {})
+        # Apply import settings
         import_settings = unreal_settings.get("import_settings", {})
         cls.use_interchange = import_settings.get("use_interchange",
                                                   cls.use_interchange)
-        cls.show_dialog = import_settings.get("show_dialog",
-                                                  cls.show_dialog)
-        cls.use_nanite = import_settings.get("use_nanite",
-                                                  cls.use_nanite)
+        cls.show_dialog = import_settings.get("show_dialog", cls.show_dialog)
         cls.pipeline_path = import_settings.get("interchange", {}).get(
             "pipeline_path_static_mesh", cls.pipeline_path
         )
@@ -53,69 +51,67 @@ class StaticMeshFBXLoader(plugin.Loader):
     @classmethod
     def get_task(cls, filename, asset_dir, asset_name, replace):
         task = unreal.AssetImportTask()
-        options = unreal.FbxImportUI()
-        import_data = unreal.FbxStaticMeshImportData()
 
         task.set_editor_property('filename', filename)
         task.set_editor_property('destination_path', asset_dir)
         task.set_editor_property('destination_name', asset_name)
         task.set_editor_property('replace_existing', replace)
-        task.set_editor_property('automated', not cls.show_dialog)
+        task.set_editor_property('automated', bool(not cls.show_dialog))
         task.set_editor_property('save', True)
 
         # set import options here
-        options.set_editor_property(
-            'automated_import_should_detect_type', False)
-        options.set_editor_property('import_animations', False)
-
-        import_data.set_editor_property('combine_meshes', True)
-        import_data.set_editor_property('remove_degenerates', False)
-        import_data.set_editor_property('build_nanite', cls.use_nanite) #nanite
-
-        options.static_mesh_import_data = import_data
-        task.options = options
 
         return task
 
     @classmethod
     def import_and_containerize(
-        cls, filepath, asset_dir, asset_name, container_name, asset_path=None
+        self, filepath, asset_dir, asset_name, container_name, asset_path=None
     ):
-        if cls.use_interchange:
-            unreal.log("Import using interchange method")
-            unreal.SystemLibrary.execute_console_command(None, "Interchange.FeatureFlags.Import.FBX 1")
+        if self.use_interchange:
+            print("Import using interchange method")
+
+            unreal.SystemLibrary.execute_console_command(
+                None, "Interchange.FeatureFlags.Import.PNG 1")
+            unreal.SystemLibrary.execute_console_command(
+                None, "Interchange.FeatureFlags.Import.JPG 1")
+            unreal.SystemLibrary.execute_console_command(
+                None, "Interchange.FeatureFlags.Import.TIFF 1")
 
             import_assetparameters = unreal.ImportAssetParameters()
             editor_asset_subsystem = unreal.EditorAssetSubsystem()
-            import_assetparameters.is_automated = not cls.show_dialog
+            import_assetparameters.is_automated = bool(not self.show_dialog)
+            import_assetparameters.is_automated = bool(not self.show_dialog)
 
+            # The path to the Interchange asset
             tmp_pipeline_path = "/Game/tmp"
-            pipeline = editor_asset_subsystem.duplicate_asset(cls.pipeline_path, tmp_pipeline_path) # the path to the Interchange asset
+            pipeline = editor_asset_subsystem.duplicate_asset(
+                self.pipeline_path, tmp_pipeline_path)
 
-            # interchange settings here
+            # Interchange settings here
             pipeline.asset_name = asset_name
 
             import_assetparameters.override_pipelines.append(
                 unreal.SoftObjectPath(f"{tmp_pipeline_path}.tmp"))
 
-            source_data = unreal.InterchangeManager.create_source_data(filepath)
-            interchange_manager = unreal.InterchangeManager.get_interchange_manager_scripted()
+            source_data = unreal.InterchangeManager.create_source_data(
+                filepath)
+            interchange_manager = unreal.InterchangeManager.get_interchange_manager_scripted()  # noqa
             interchange_manager.import_asset(asset_dir, source_data,
-                                            import_assetparameters)
+                                             import_assetparameters)
 
-
-            editor_asset_subsystem.delete_asset(tmp_pipeline_path) # remove temp file
+            # remove temp file
+            editor_asset_subsystem.delete_asset(tmp_pipeline_path)
 
         else:
-            unreal.log("Import using defered method")
+            self.log.info("Import using deferred method")
             task = None
             if asset_path:
                 loaded_asset_dir = unreal.Paths.split(asset_path)[0]
-                task = cls.get_task(filepath, loaded_asset_dir, asset_name, True)
+                task = self.get_task(filepath, loaded_asset_dir, asset_name, True)
             else:
                 if not unreal.EditorAssetLibrary.does_asset_exist(
                     f"{asset_dir}/{asset_name}"):
-                        task = cls.get_task(filepath, asset_dir, asset_name, False)
+                        task = self.get_task(filepath, asset_dir, asset_name, False)
 
             unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
 
@@ -125,13 +121,13 @@ class StaticMeshFBXLoader(plugin.Loader):
                 create_container(container=container_name, path=asset_dir)
 
     def imprint(
-        self,
-        folder_path,
-        asset_dir,
-        container_name,
-        asset_name,
-        repre_entity,
-        product_type
+            self,
+            folder_path,
+            asset_dir,
+            container_name,
+            asset_name,
+            repre_entity,
+            product_type
     ):
         data = {
             "schema": "ayon:container-2.0",
@@ -183,16 +179,17 @@ class StaticMeshFBXLoader(plugin.Loader):
         )
         if not unreal.EditorAssetLibrary.does_directory_exist(asset_dir):
             unreal.EditorAssetLibrary.make_directory(asset_dir)
+
         self.import_and_containerize(
             path, asset_dir, asset_name,
             container_name, asset_path=asset_path
         )
+
         if asset_path:
             unreal.EditorAssetLibrary.rename_asset(
                 f"{asset_path}",
                 f"{asset_dir}/{asset_name}.{asset_name}"
             )
-
         self.imprint(
             folder_path,
             asset_dir,
@@ -202,35 +199,34 @@ class StaticMeshFBXLoader(plugin.Loader):
             context["product"]["productType"]
         )
 
-        asset_content = unreal.EditorAssetLibrary.list_assets(
+        asset_contents = unreal.EditorAssetLibrary.list_assets(
             asset_dir, recursive=True, include_folder=True
         )
+        for unreal_asset in asset_contents:
+            unreal.EditorAssetLibrary.save_asset(unreal_asset)
 
-        for a in asset_content:
-            unreal.EditorAssetLibrary.save_asset(a)
-
-        return asset_content
+        return asset_contents
 
     def update(self, container, context):
         folder_path = context["folder"]["path"]
         product_type = context["product"]["productType"]
         repre_entity = context["representation"]
+        path = get_representation_path(repre_entity)
+        ext = os.path.splitext(path)[-1].lstrip(".")
 
         # Create directory for asset and Ayon container
         suffix = "_CON"
-        path = get_representation_path(repre_entity)
-        ext = os.path.splitext(path)[-1].lstrip(".")
         asset_root, asset_name = format_asset_directory(context, self.loaded_asset_dir)
+
         tools = unreal.AssetToolsHelpers().get_asset_tools()
         asset_dir, container_name = tools.create_unique_asset_name(
             asset_root, suffix=f"_{ext}")
 
-
         container_name += suffix
         if not unreal.EditorAssetLibrary.does_directory_exist(asset_dir):
             unreal.EditorAssetLibrary.make_directory(asset_dir)
-        self.import_and_containerize(path, asset_dir, asset_name,
-                                     container_name)
+
+        self.import_and_containerize(path, asset_dir, asset_name, container_name)
 
         self.imprint(
             folder_path,
@@ -241,12 +237,11 @@ class StaticMeshFBXLoader(plugin.Loader):
             product_type
         )
 
-        asset_content = unreal.EditorAssetLibrary.list_assets(
+        asset_contents = unreal.EditorAssetLibrary.list_assets(
             asset_dir, recursive=True, include_folder=False
         )
-
-        for a in asset_content:
-            unreal.EditorAssetLibrary.save_asset(a)
+        for unreal_asset in asset_contents:
+            unreal.EditorAssetLibrary.save_asset(unreal_asset)
 
     def remove(self, container):
         path = container["namespace"]

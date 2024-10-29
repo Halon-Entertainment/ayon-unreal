@@ -1,3 +1,4 @@
+import re
 import unreal
 
 from ayon_unreal.api.pipeline import (
@@ -9,8 +10,26 @@ from ayon_unreal.api.pipeline import (
 from ayon_core.pipeline import InventoryAction
 
 
+def find_common_parts(old_asset_name, new_asset_name):
+    # Find the common prefix
+    prefix_match = re.match(r"^(.*?)(\d+)(.*?)$", old_asset_name)
+    if not prefix_match:
+        return
+    name, _, ext = prefix_match.groups()
+
+    # Construct a dynamic pattern based on the common prefix and suffix
+    pattern = re.escape(name) + r"(\d+)" + re.escape(ext)
+
+    # Match the pattern in the second variable
+    new_version_match = re.match(pattern, new_asset_name)
+    if not new_version_match:
+        return
+
+    return new_asset_name
+
+
 def update_assets(containers, selected):
-    allowed_families = ["model", "rig"]
+    allowed_families = ["animation", "model", "rig", "pointcache"]
 
     # Get all the containers in the Unreal Project
     all_containers = ls()
@@ -28,10 +47,13 @@ def update_assets(containers, selected):
             i
             for i in all_containers
             if (
-                i.get("asset_name") == container.get("asset_name") and
+                find_common_parts(
+                    i.get("asset_name"), container.get("asset_name")) and
                 i.get("objectName") != container.get("objectName")
             )
         ]
+        if not sa_containers:
+            return
 
         asset_content = unreal.EditorAssetLibrary.list_assets(
             container_dir, recursive=True, include_folder=False
@@ -40,21 +62,40 @@ def update_assets(containers, selected):
         # Update all actors in level
         for sa_cont in sa_containers:
             sa_dir = sa_cont.get("namespace")
+            if sa_dir == container_dir:
+                return
             old_content = unreal.EditorAssetLibrary.list_assets(
                 sa_dir, recursive=True, include_folder=False
             )
+
+            unreal.log("old_content")
+            unreal.log(old_content)
 
             if container.get("family") == "rig":
                 replace_skeletal_mesh_actors(
                     old_content, asset_content, selected)
                 replace_static_mesh_actors(
                     old_content, asset_content, selected)
+
             elif container.get("family") == "model":
                 if container.get("loader") == "PointCacheAlembicLoader":
                     replace_geometry_cache_actors(
                         old_content, asset_content, selected)
                 else:
                     replace_static_mesh_actors(
+                        old_content, asset_content, selected)
+
+            elif container.get("family") == "pointcache":
+                if container.get("loader") == "PointCacheAlembicLoader":
+                    replace_geometry_cache_actors(
+                        old_content, asset_content, selected)
+                else:
+                    replace_skeletal_mesh_actors(
+                        old_content, asset_content, selected)
+
+            elif container.get("family") == "animation":
+                if container.get("loader") == "AnimationAlembicLoader":
+                    replace_skeletal_mesh_actors(
                         old_content, asset_content, selected)
 
             unreal.EditorLevelLibrary.save_current_level()
