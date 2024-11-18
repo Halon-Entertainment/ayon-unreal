@@ -1,7 +1,7 @@
 name = "unreal"
 title = "Unreal"
-version = "0.2.4-halon-0.0.0-dev.1"
-
+version = "0.2.5"
+app_host_name = "unreal"
 client_dir = "ayon_unreal"
 
 ayon_required_addons = {
