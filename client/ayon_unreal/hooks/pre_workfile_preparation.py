@@ -210,12 +210,13 @@ class UnrealPrelaunchHook(PreLaunchHook):
         built_plugin_path = self.launch_context.env.get(
             "AYON_BUILT_UNREAL_PLUGIN", None)
 
+        if not "AYON_BUILT_UNREAL_PLUGIN" in os.environ:
+            raise ApplicationLaunchFailed(f"Failed to find plugin: {built_plugin_path}")
+
         if os.path.exists(os.environ['AYON_BUILT_UNREAL_PLUGIN']):
             built_plugin_path = os.environ['AYON_BUILT_UNREAL_PLUGIN']
             self.log.debug(f"Plugin exists: {built_plugin_path}")
             os.environ["AYON_UNREAL_PLUGIN"] = built_plugin_path
-
-
 
 
         project_file = project_path / unreal_project_filename
