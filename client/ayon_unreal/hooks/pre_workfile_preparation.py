@@ -211,6 +211,10 @@ class UnrealPrelaunchHook(PreLaunchHook):
         built_plugin_path = self.launch_context.env.get(
             "AYON_BUILT_UNREAL_PLUGIN", None)
 
+        if os.path.exists(os.environ['AYON_UNREAL_PLUGIN']):
+            built_plugin_path = os.environ['AYON_UNREAL_PLUGIN']
+            os.environ['AYON_UNREAL_PLUGIN'] = built_plugin_path
+
         if unreal_lib.check_built_plugin_existance(built_plugin_path):
             self.log.info((
                 f"{self.signature} using existing built Ayon plugin from "
