@@ -150,6 +150,11 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
     def execute(self):
         """Hook entry method."""
+        project_settings = self.data["project_settings"]
+        unreal_settings = project_settings["unreal"]
+        if not unreal_settings['enabled']:
+            return
+
         workdir = self.launch_context.env["AYON_WORKDIR"]
         executable = str(self.launch_context.executable)
         engine_version = self.app_name.split("/")[-1].replace("-", ".")
