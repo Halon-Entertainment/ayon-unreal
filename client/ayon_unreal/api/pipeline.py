@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import os
+import re
 import json
+import clique
 import logging
-from typing import List
+from typing import List, Any
 from contextlib import contextmanager
 import time
 
@@ -20,6 +22,10 @@ from ayon_core.pipeline import (
     AYON_CONTAINER_ID,
     get_current_project_name,
 )
+from ayon_core.lib import StringTemplate
+from ayon_core.pipeline.context_tools import (
+    get_current_folder_entity
+)
 from ayon_core.tools.utils import host_tools
 from ayon_core.host import HostBase, ILoadHost, IPublishHost
 from ayon_unreal import UNREAL_ADDON_ROOT
@@ -30,6 +36,7 @@ import unreal  # noqa
 logger = logging.getLogger("ayon_core.hosts.unreal")
 
 AYON_CONTAINERS = "AyonContainers"
+AYON_ROOT_DIR = "/Game/Ayon"
 AYON_ASSET_DIR = "/Game/Ayon/Assets"
 CONTEXT_CONTAINER = "Ayon/context.json"
 UNREAL_VERSION = semver.VersionInfo(
@@ -600,39 +607,30 @@ def generate_sequence(h, h_dir):
     )
 
     project_name = get_current_project_name()
-    # TODO Fix this does not return folder path
-    folder_path = h_dir.split('/')[-1]
+    filtered_dir = "/Game/Ayon/"
+    folder_path = h_dir.replace(filtered_dir, "")
     folder_entity = ayon_api.get_folder_by_path(
         project_name,
         folder_path,
-        fields={"id", "attrib.fps"}
+        fields={
+            "id",
+            "attrib.fps",
+            "attrib.clipIn",
+            "attrib.clipOut"
+        }
     )
-    start_frames = []
-    end_frames = []
-    # unreal default fps value
+    # unreal default frame range value
     fps = 60.0
+    min_frame = sequence.get_playback_start()
+    max_frame = sequence.get_playback_end()
     if folder_entity:
-        unreal.log("Found folder entity data: {}".format(folder_entity))
-
-        elements = list(ayon_api.get_folders(
-            project_name,
-            parent_ids=[folder_entity["id"]],
-            fields={"id", "attrib.clipIn", "attrib.clipOut"}
-        ))
-        for e in elements:
-            start_frames.append(e["attrib"].get("clipIn"))
-            end_frames.append(e["attrib"].get("clipOut"))
-
-            elements.extend(ayon_api.get_folders(
-                project_name,
-                parent_ids=[e["id"]],
-                fields={"id", "attrib.clipIn", "attrib.clipOut"}
-            ))
-
-        fps = folder_entity["attrib"].get("fps")
-    min_frame = min(start_frames, default=sequence.get_playback_start())
-    max_frame = max(end_frames, default=sequence.get_playback_end())
-
+        min_frame = folder_entity["attrib"]["clipIn"]
+        max_frame = folder_entity["attrib"]["clipOut"]
+        fps = folder_entity["attrib"]["fps"]
+    else:
+        unreal.log_warning(
+            "Folder Entity not found. Using default Unreal frame range value."
+        )
 
     sequence.set_display_rate(
         unreal.FrameRate(fps, 1.0))
@@ -804,3 +802,239 @@ def maintained_selection():
         yield
     finally:
         pass
+
+
+@contextmanager
+def select_camera(sequence):
+    """Select camera during context
+    Args:
+        sequence (Objects): Level Sequence Object
+    """
+    camera_actors = find_camera_actors_in_camera_tracks(sequence)
+    actor_subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    selected_actors = actor_subsys.get_selected_level_actors()
+    actor_subsys.select_nothing()
+    for actor in camera_actors:
+        actor_subsys.set_actor_selection_state(actor, True)
+    try:
+        yield
+    finally:
+        for actor in camera_actors:
+            if actor in selected_actors:
+                actor_subsys.set_actor_selection_state(actor, True)
+            else:
+                actor_subsys.set_actor_selection_state(actor, False)
+
+
+def format_asset_directory(name, context, directory_template,
+                           extension="",
+                           use_version=True):
+    """Setting up the asset directory path and name.
+    Args:
+        name (str): Instance name
+        context (dict): context
+        directory_template (str): directory template path
+        extension (str, optional): file extension. Defaults to "abc".
+        use_version (bool, optional): use context version for asset
+            directory. Defaults to True.
+    Returns:
+        tuple[str, str]: asset directory, asset name
+    """
+
+    data = {}
+    name_version = None
+    data["folder"] = context["folder"]
+    folder_name = context["folder"]["name"]
+    asset_name = set_asset_name(folder_name, name, extension)
+
+    if use_version:
+        version = context["version"]["version"]
+        # Check if version is hero version and use different name
+        if version < 0:
+            name_version = f"{name}_hero"
+        else:
+            name_version = f"{name}_v{version:03d}"
+    else:
+        name_version = asset_name
+
+    asset_name_with_version = set_asset_name(folder_name, name_version, extension)
+    data["product"] = {"name": name_version}
+    asset_dir = StringTemplate(directory_template).format_strict(data)
+    return f"{AYON_ROOT_DIR}/{asset_dir}", asset_name_with_version
+
+
+def set_asset_name(folder_name, name, extension):
+    """Set the name of the asset during loading
+
+    Args:
+        folder_name (str): folder name
+        name (str): instance name
+        extension (str): extension
+
+    Returns:
+        str: asset name
+    """
+    asset_name = None
+    if not extension:
+        asset_name = name
+    elif folder_name:
+        asset_name = "{}_{}_{}".format(folder_name, name, extension)
+    else:
+        asset_name = "{}_{}".format(name, extension)
+    return asset_name
+
+
+def get_sequence(files):
+    """Get sequence from filename.
+
+    This will only return files if they exist on disk as it tries
+    to collect the sequence using the filename pattern and searching
+    for them on disk.
+
+    Supports negative frame ranges like -001, 0000, 0001 and -0001,
+    0000, 0001.
+
+    Arguments:
+        files (str): List of files
+
+    Returns:
+        Optional[list[str]]: file sequence.
+
+    """
+    collections, _remainder = clique.assemble(
+        files,
+        patterns=[clique.PATTERNS["frames"]],
+        minimum_items=1)
+
+    if len(collections) > 1:
+        raise ValueError(
+            f"Multiple collections found for {collections}. "
+            "This is a bug.")
+
+    return [os.path.basename(filename) for filename in collections[0]]
+
+
+def find_camera_actors_in_camera_tracks(sequence) -> list[Any]:
+    """Find the camera actors in the tracks from the Level Sequence
+
+    Args:
+        tracks (Object): Level Seqence Asset
+
+    Returns:
+        Object: Camera Actor
+    """
+    camera_tracks = []
+    camera_objects = []
+    camera_tracks = get_camera_tracks(sequence)
+    if camera_tracks:
+        for camera_track in camera_tracks:
+            sections = camera_track.get_sections()
+            for section in sections:
+                binding_id = section.get_camera_binding_id()
+                bound_objects = unreal.LevelSequenceEditorBlueprintLibrary.get_bound_objects(
+                    binding_id)
+                for camera_object in bound_objects:
+                    camera_objects.append(camera_object.get_path_name())
+    world =  unreal.EditorLevelLibrary.get_editor_world()
+    sel_actors = unreal.GameplayStatics().get_all_actors_of_class(
+        world, unreal.CameraActor)
+    actors = [a for a in sel_actors if a.get_path_name() in camera_objects]
+    return actors
+
+
+def get_frame_range(sequence):
+    """Get the Clip in/out value from the camera tracks located inside
+    the level sequence
+
+    Args:
+        sequence (Object): Level Sequence
+
+    Returns:
+        int32, int32 : Start Frame, End Frame
+    """
+    camera_tracks = get_camera_tracks(sequence)
+    if not camera_tracks:
+        return sequence.get_playback_start(), sequence.get_playback_end()
+    for camera_track in camera_tracks:
+        sections = camera_track.get_sections()
+        for section in sections:
+            return section.get_start_frame(), section.get_end_frame()
+
+
+def get_camera_tracks(sequence):
+    """Get the list of movie scene camera cut tracks in the level sequence
+
+    Args:
+        sequence (Object): Level Sequence
+
+    Returns:
+        list: list of movie scene camera cut tracks
+    """
+    camera_tracks = []
+    tracks = sequence.get_master_tracks()
+    for track in tracks:
+        if str(track).count("MovieSceneCameraCutTrack"):
+            camera_tracks.append(track)
+    return camera_tracks
+
+
+def get_frame_range_from_folder_attributes(folder_entity=None):
+    """Get the current clip In/Out value
+    Args:
+        folder_entity (dict): folder Entity.
+
+    Returns:
+        int, int: clipIn, clipOut.
+    """
+    if folder_entity is None:
+        folder_entity = get_current_folder_entity(fields={"attrib"})
+    folder_attributes = folder_entity["attrib"]
+    frame_start = (
+        int(folder_attributes.get("frameStart"))
+        if folder_attributes.get("frameStart") else 1
+    )
+    frame_end = (
+        int(folder_attributes.get("frameEnd"))
+        if folder_attributes.get("frameEnd") else 1
+    )
+    return frame_start, frame_end
+
+
+def has_asset_existing_directory(asset_name, asset_dir):
+    """Check if the asset already existed
+    Args:
+        asset_name (str): asset name
+
+    Returns:
+        str: package path
+    """
+    asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
+    all_assets = asset_registry.get_assets_by_path('/Game', recursive=True)
+    for game_asset in all_assets:
+        if game_asset.asset_name == asset_name:
+            asset_path = game_asset.get_asset().get_path_name()
+            existing_asset_dir = unreal.Paths.split(asset_path)[0]
+            existing_version_folder = existing_asset_dir.split("/")[-1]
+            existing_asset_dir = existing_asset_dir.replace(existing_version_folder, "")
+            if existing_asset_dir != asset_dir:
+                return asset_path
+    return None
+
+def has_asset_directory_pattern_matched(asset_name, asset_dir, name, extension=None):
+    version_folder = asset_dir.split("/")[-1]
+    target_asset_dir = asset_dir.replace(version_folder, "")
+    asset_path = has_asset_existing_directory(asset_name, target_asset_dir)
+    if not asset_path:
+        return None
+    existing_asset_dir = unreal.Paths.split(asset_path)[0]
+    existing_version_folder = existing_asset_dir.split("/")[-1]
+    # TODO: make it not hardcoded
+    pattern = rf"{name}_\d{{3}}"
+    if extension:
+        pattern = rf"{name}_v\d{{3}}_{extension}"
+    is_version_folder_matched = re.match(pattern, version_folder)
+    is_existing_version_folder_matched = re.match(pattern, existing_version_folder)
+    if not is_version_folder_matched or not is_existing_version_folder_matched:
+        return asset_path
+
+    return None
