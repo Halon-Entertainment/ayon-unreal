@@ -13,6 +13,11 @@ class ProjectSetup(BaseSettingsModel):
         False,
         title="Dev mode"
     )
+    allow_project_creation: bool = SettingsField(
+        False,
+        title="Allow Project Creation",
+        description="Allows Ayon to create the unreal project."
+    )
 
 
 def _abc_conversion_presets_enum():
@@ -40,6 +45,11 @@ def _loaded_asset_enum():
 
 
 class UnrealSettings(BaseSettingsModel):
+    project_folder: str = SettingsField(
+        "{project[name]}",
+        title="Project Folder",
+        description="Project Folder"
+    )
     imageio: UnrealImageIOModel = SettingsField(
         default_factory=UnrealImageIOModel,
         title="Color Management (ImageIO)"
