@@ -13,7 +13,6 @@ class UnrealAddon(AYONAddon, IHostAddon):
     host_name = "unreal"
 
     def initialize(self, settings):
-        self.enabled = settings[self.name]['enabled']
         return super().initialize(settings)
 
     def get_global_environments(self):
