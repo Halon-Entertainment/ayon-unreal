@@ -107,6 +107,11 @@ class UnrealSettings(BaseSettingsModel):
         enum_resolver=_loaded_asset_enum,
         description="The overriding folder representation type during loading"
     )
+    halon_storage_path: str = SettingsField(
+        "",
+        title="Halon Custom Storage Path",
+        description="Halon import base directory for content"
+    )
     render_queue_path: str = SettingsField(
         "",
         title="Render Queue Path",
@@ -141,8 +146,9 @@ DEFAULT_VALUES = {
     "abc_conversion_preset": "maya",
     "force_loaded": False,
     "folder_representation_type": "json",
-    "render_queue_path": "/Game/Ayon/renderQueue",
-    "render_config_path": "/Game/Ayon/DefaultMovieRenderQueueConfig.DefaultMovieRenderQueueConfig",
+    "halon_storage_path": "/Game/Halon",
+    "render_queue_path": "/renderQueue",
+    "render_config_path": "/DefaultMovieRenderQueueConfig.DefaultMovieRenderQueueConfig",
     "preroll_frames": 0,
     "render_format": "exr",
     "project_setup": {
