@@ -48,7 +48,7 @@ class UnrealSettings(BaseSettingsModel):
     enabled: bool = SettingsField(
         False,
         title="Enabled",
-        scope=['project']
+        scope=['studio', 'project']
     )
     project_folder: str = SettingsField(
         "{project[name]}",
