@@ -14,6 +14,8 @@ class UnrealAddon(AYONAddon, IHostAddon):
 
     def initialize(self, settings):
         self.enabled = settings[self.name]['enabled']
+        if 'UE_PYTHONPATH' not in os.environ:
+            os.environ['UE_PYTHONPATH'] = os.environ['PYTHONPATH']
         return super().initialize(settings)
 
     def get_global_environments(self):
