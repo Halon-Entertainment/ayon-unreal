@@ -40,7 +40,6 @@ from ayon_unreal.api.plugin import HALON_PATH_CONFIG
 logger = logging.getLogger("ayon_core.hosts.unreal")
 
 AYON_CONTAINERS = "AyonContainers"
-AYON_ROOT_DIR = HALON_PATH_CONFIG
 AYON_ASSET_DIR = f"{HALON_PATH_CONFIG}/Assets"
 CONTEXT_CONTAINER = "Ayon/context.json"
 UNREAL_VERSION = semver.VersionInfo(
@@ -882,7 +881,7 @@ def format_asset_directory(context, directory_template):
         data["version"]["version"] = f"v{version:03d}"
     asset_name_with_version = set_asset_name(data)
     asset_dir = StringTemplate(directory_template).format_strict(data)
-    return f"{AYON_ROOT_DIR}/{asset_dir}", asset_name_with_version
+    return f"{HALON_PATH_CONFIG}/{asset_dir}", asset_name_with_version
 
 
 def set_asset_name(data):
@@ -1077,7 +1076,7 @@ def get_top_hierarchy_folder(path):
         str: top hierarchy directory
     """
     # Split the path by the directory separator '/'
-    path = path.replace(f"{AYON_ROOT_DIR}/", "")
+    path = path.replace(f"{HALON_PATH_CONFIG}/", "")
     # Return the first part
     parts = [part for part in path.split('/') if part]
     return parts[0]
@@ -1085,7 +1084,7 @@ def get_top_hierarchy_folder(path):
 
 def generate_hierarchy_path(name, folder_name, asset_root, master_dir_name, suffix=""):
     asset_name = f"{folder_name}_{name}" if folder_name else name
-    hierarchy_dir = f"{AYON_ROOT_DIR}/{master_dir_name}"
+    hierarchy_dir = f"{HALON_PATH_CONFIG}/{master_dir_name}"
     tools = unreal.AssetToolsHelpers().get_asset_tools()
     asset_dir, container_name = tools.create_unique_asset_name(asset_root, suffix=suffix)
     suffix = "_CON"
@@ -1100,8 +1099,8 @@ def remove_map_and_sequence(container):
     asset_dir = container.get('namespace')
     # Create a temporary level to delete the layout level.
     unreal.EditorLevelLibrary.save_all_dirty_levels()
-    unreal.EditorAssetLibrary.make_directory(f"{AYON_ROOT_DIR}/tmp")
-    tmp_level = f"{AYON_ROOT_DIR}/tmp/temp_map"
+    unreal.EditorAssetLibrary.make_directory(f"{HALON_PATH_CONFIG}/tmp")
+    tmp_level = f"{HALON_PATH_CONFIG}/tmp/temp_map"
     if not unreal.EditorAssetLibrary.does_asset_exist(f"{tmp_level}.temp_map"):
         unreal.EditorLevelLibrary.new_level(tmp_level)
     else:
@@ -1113,7 +1112,7 @@ def remove_map_and_sequence(container):
     # Load the default level
     default_level_path = "/Engine/Maps/Templates/OpenWorld"
     unreal.EditorLevelLibrary.load_level(default_level_path)
-    unreal.EditorAssetLibrary.delete_directory(f"{AYON_ROOT_DIR}/tmp")
+    unreal.EditorAssetLibrary.delete_directory(f"{HALON_PATH_CONFIG}/tmp")
 
 
 def update_container(container, repre_entity, loaded_assets=None):

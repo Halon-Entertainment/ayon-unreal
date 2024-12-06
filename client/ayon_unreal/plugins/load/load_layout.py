@@ -16,11 +16,11 @@ from ayon_core.pipeline import (
 )
 from ayon_core.settings import get_current_project_settings
 from ayon_unreal.api import plugin
+from ayon_unreal.api.plugin import HALON_PATH_CONFIG
 from ayon_unreal.api.pipeline import (
     generate_master_level_sequence,
     set_sequence_hierarchy,
     create_container,
-    AYON_ROOT_DIR,
     format_asset_directory,
     get_top_hierarchy_folder,
     generate_hierarchy_path,
@@ -390,7 +390,7 @@ class LayoutLoader(plugin.LayoutLoader):
         hierarchy_dir = container.get("master_directory", "")
         if not hierarchy_dir:
             master_dir_name = get_top_hierarchy_folder(asset_dir)
-            hierarchy_dir = f"{AYON_ROOT_DIR}/{master_dir_name}"
+            hierarchy_dir = f"{HALON_PATH_CONFIG}/{master_dir_name}"
         if create_sequences:
             master_level = f"{hierarchy_dir}/{master_dir_name}_map.{master_dir_name}_map"
             filter = unreal.ARFilter(
@@ -471,9 +471,9 @@ class LayoutLoader(plugin.LayoutLoader):
             # find the level sequence.
             master_directory = container.get("master_directory", "")
             if not master_directory:
-                namespace = container.get('namespace').replace(f"{AYON_ROOT_DIR}/", "")
+                namespace = container.get('namespace').replace(f"{HALON_PATH_CONFIG}/", "")
                 ms_asset = namespace.split('/')[0]
-                master_directory = f"{AYON_ROOT_DIR}/{ms_asset}"
+                master_directory = f"{HALON_PATH_CONFIG}/{ms_asset}"
             ar = unreal.AssetRegistryHelpers.get_asset_registry()
             _filter = unreal.ARFilter(
                 class_names=["LevelSequence"],

@@ -10,13 +10,13 @@ from ayon_core.pipeline import (
     get_representation_path,
 )
 from ayon_unreal.api import plugin
+from ayon_unreal.api.plugin import HALON_PATH_CONFIG
 from ayon_unreal.api.pipeline import (
     generate_master_level_sequence,
     set_sequence_hierarchy,
     create_container,
     imprint,
     format_asset_directory,
-    AYON_ROOT_DIR,
     get_top_hierarchy_folder,
     generate_hierarchy_path,
     remove_map_and_sequence
@@ -238,7 +238,7 @@ class CameraLoader(plugin.Loader):
         asset_root, asset_name = format_asset_directory(
             context, self.loaded_asset_dir)
         master_dir_name = get_top_hierarchy_folder(asset_root)
-        hierarchy_dir = f"{AYON_ROOT_DIR}/{master_dir_name}"
+        hierarchy_dir = f"{HALON_PATH_CONFIG}/{master_dir_name}"
         suffix = "_CON"
         tools = unreal.AssetToolsHelpers().get_asset_tools()
         asset_dir, container_name = tools.create_unique_asset_name(
