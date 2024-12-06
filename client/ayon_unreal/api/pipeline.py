@@ -34,11 +34,12 @@ from ayon_unreal import UNREAL_ADDON_ROOT
 
 import unreal  # noqa
 
+from ayon_unreal.api.plugin import HALON_PATH_CONFIG
+
 # Rename to Ayon once parent module renames
 logger = logging.getLogger("ayon_core.hosts.unreal")
 
 AYON_CONTAINERS = "AyonContainers"
-HALON_PATH_CONFIG = ayon_api.get_addons_project_settings(anatomy.Anatomy().project_name)['unreal']['halon_storage_path']
 AYON_ROOT_DIR = HALON_PATH_CONFIG
 AYON_ASSET_DIR = f"{HALON_PATH_CONFIG}/Assets"
 CONTEXT_CONTAINER = "Ayon/context.json"

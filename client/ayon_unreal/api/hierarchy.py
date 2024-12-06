@@ -19,7 +19,7 @@ from ayon_unreal.api.pipeline import (
     generate_sequence,
     set_sequence_hierarchy,
 )
-
+from ayon_unreal.api.plugin import HALON_PATH_CONFIG
 import unreal
 
 
@@ -311,7 +311,7 @@ def build_sequence_hierarchy():
 
     project = get_current_project_name()
 
-    sequence_path = f"{ayon_api.get_addons_project_settings(anatomy.Anatomy().project_name)['unreal']['halon_storage_path']}/"
+    sequence_path = f"{HALON_PATH_CONFIG}/"
 
     folder_selector = FolderSelector(project=project)
 

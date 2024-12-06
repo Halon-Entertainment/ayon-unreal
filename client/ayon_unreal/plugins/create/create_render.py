@@ -19,6 +19,7 @@ from ayon_core.lib import (
     EnumDef
 )
 
+from ayon_unreal.api.plugin import HALON_PATH_CONFIG
 
 class CreateRender(UnrealAssetCreator):
     """Create instance for sequence for rendering"""
@@ -51,7 +52,7 @@ class CreateRender(UnrealAssetCreator):
         # If the option to create a new level sequence is selected,
         # create a new level sequence and a master level.
 
-        root = "/Game/Ayon/Sequences"
+        root = f"{HALON_PATH_CONFIG}/Sequences"
 
         # Create a new folder for the sequence in root
         sequence_dir_name = create_folder(root, product_name)
