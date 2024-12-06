@@ -147,8 +147,8 @@ DEFAULT_VALUES = {
     "force_loaded": False,
     "folder_representation_type": "json",
     "halon_storage_path": "/Game/Halon",
-    "render_queue_path": "/renderQueue",
-    "render_config_path": "/DefaultMovieRenderQueueConfig.DefaultMovieRenderQueueConfig",
+    "render_queue_path": "/Game/Halon/renderQueue",
+    "render_config_path": "/Game/Halon/DefaultMovieRenderQueueConfig.DefaultMovieRenderQueueConfig",
     "preroll_frames": 0,
     "render_format": "exr",
     "project_setup": {
