@@ -22,6 +22,7 @@ from ayon_core.pipeline import (
     deregister_inventory_action_path,
     AYON_CONTAINER_ID,
     get_current_project_name,
+    anatomy
 )
 from ayon_core.lib import StringTemplate
 from ayon_core.pipeline.context_tools import (
@@ -37,8 +38,9 @@ import unreal  # noqa
 logger = logging.getLogger("ayon_core.hosts.unreal")
 
 AYON_CONTAINERS = "AyonContainers"
-AYON_ROOT_DIR = "/Game/Ayon"
-AYON_ASSET_DIR = "/Game/Ayon/Assets"
+HALON_PATH_CONFIG = ayon_api.get_addons_project_settings(anatomy.Anatomy().project_name)['unreal']['halon_storage_path']
+AYON_ROOT_DIR = HALON_PATH_CONFIG
+AYON_ASSET_DIR = f"{HALON_PATH_CONFIG}/Assets"
 CONTEXT_CONTAINER = "Ayon/context.json"
 UNREAL_VERSION = semver.VersionInfo(
     *os.getenv("AYON_UNREAL_VERSION").split(".")
@@ -77,6 +79,15 @@ class UnrealHost(HostBase, ILoadHost, IPublishHost):
         show_tools_dialog()
 
     def update_context_data(self, data, changes):
+        """
+        This writes a 'context' json file into the unreal project for reasons
+        Args:
+            data: idk
+            changes: idk
+        """
+        print(f"update_context_data")
+        print(data)
+        print(changes)
         content_path = unreal.Paths.project_content_dir()
         op_ctx = content_path + CONTEXT_CONTAINER
         attempts = 3
@@ -101,6 +112,7 @@ class UnrealHost(HostBase, ILoadHost, IPublishHost):
             return {}
         with open(op_ctx, "r") as fp:
             data = json.load(fp)
+        print(f"get_context_data: {data}")
         return data
 
 
@@ -608,7 +620,7 @@ def generate_sequence(h, h_dir):
     )
 
     project_name = get_current_project_name()
-    filtered_dir = "/Game/Ayon/"
+    filtered_dir = f"{HALON_PATH_CONFIG}/"
     folder_path = h_dir.replace(filtered_dir, "")
     folder_entity = ayon_api.get_folder_by_path(
         project_name,

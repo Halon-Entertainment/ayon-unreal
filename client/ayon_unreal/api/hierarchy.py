@@ -7,6 +7,7 @@ from ayon_core import (
     style
 )
 from ayon_core.pipeline import get_current_project_name
+from ayon_core.pipeline import anatomy
 from ayon_core.tools.utils import (
     show_message_dialog,
     PlaceholderLineEdit,
@@ -310,7 +311,7 @@ def build_sequence_hierarchy():
 
     project = get_current_project_name()
 
-    sequence_path = "/Game/Ayon/"
+    sequence_path = f"{ayon_api.get_addons_project_settings(anatomy.Anatomy().project_name)['unreal']['halon_storage_path']}/"
 
     folder_selector = FolderSelector(project=project)
 
