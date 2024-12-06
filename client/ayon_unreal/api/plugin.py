@@ -31,10 +31,10 @@ from ayon_core.pipeline import (
     discover_loader_plugins,
     loaders_from_representation,
     load_container,
-    AYON_CONTAINER_ID,
-    anatomy
+    AYON_CONTAINER_ID
 )
-HALON_PATH_CONFIG = ayon_api.get_addons_project_settings(anatomy.Anatomy().project_name)['unreal']['halon_storage_path']
+
+from ayon_unreal.api.storage import  HALON_PATH_CONFIG
 
 class UnrealCreateLogic():
     """Universal class for logic that Unreal creators could inherit from."""

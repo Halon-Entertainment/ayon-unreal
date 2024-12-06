@@ -10,7 +10,9 @@ from ayon_core.pipeline import (
     get_representation_path,
 )
 from ayon_unreal.api import plugin
-from ayon_unreal.api.plugin import HALON_PATH_CONFIG
+
+from ayon_unreal.api.storage import  HALON_PATH_CONFIG
+
 from ayon_unreal.api.pipeline import (
     generate_master_level_sequence,
     set_sequence_hierarchy,

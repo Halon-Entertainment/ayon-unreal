@@ -19,7 +19,7 @@ from ayon_core.lib import (
     EnumDef
 )
 
-from ayon_unreal.api.plugin import HALON_PATH_CONFIG
+from ayon_unreal.api.storage import  HALON_PATH_CONFIG
 
 class CreateRender(UnrealAssetCreator):
     """Create instance for sequence for rendering"""

@@ -16,7 +16,9 @@ from ayon_core.pipeline import (
 )
 from ayon_core.settings import get_current_project_settings
 from ayon_unreal.api import plugin
-from ayon_unreal.api.plugin import HALON_PATH_CONFIG
+
+from ayon_unreal.api.storage import  HALON_PATH_CONFIG
+
 from ayon_unreal.api.pipeline import (
     generate_master_level_sequence,
     set_sequence_hierarchy,

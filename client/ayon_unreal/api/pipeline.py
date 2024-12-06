@@ -34,7 +34,7 @@ from ayon_unreal import UNREAL_ADDON_ROOT
 
 import unreal  # noqa
 
-from ayon_unreal.api.plugin import HALON_PATH_CONFIG
+from ayon_unreal.api.storage import  HALON_PATH_CONFIG
 
 # Rename to Ayon once parent module renames
 logger = logging.getLogger("ayon_core.hosts.unreal")

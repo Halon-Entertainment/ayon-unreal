@@ -6,8 +6,11 @@ from ayon_core import (
     resources,
     style
 )
-from ayon_core.pipeline import get_current_project_name
-from ayon_core.pipeline import anatomy
+from ayon_core.pipeline import (
+    get_current_project_name,
+    anatomy
+)
+
 from ayon_core.tools.utils import (
     show_message_dialog,
     PlaceholderLineEdit,
@@ -19,9 +22,10 @@ from ayon_unreal.api.pipeline import (
     generate_sequence,
     set_sequence_hierarchy,
 )
-from ayon_unreal.api.plugin import HALON_PATH_CONFIG
+
 import unreal
 
+from ayon_unreal.api.storage import  HALON_PATH_CONFIG
 
 class ConfirmButton(SquareButton):
     def __init__(self, parent=None):
