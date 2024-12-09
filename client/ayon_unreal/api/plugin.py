@@ -15,7 +15,8 @@ from .pipeline import (
     create_publish_instance,
     imprint,
     ls_inst,
-    UNREAL_VERSION
+    UNREAL_VERSION,
+    IMPORT_STORAGE_PATH
 )
 from .lib import remove_loaded_asset
 from ayon_core.lib import (
@@ -37,7 +38,7 @@ from ayon_core.pipeline import (
 
 class UnrealCreateLogic():
     """Universal class for logic that Unreal creators could inherit from."""
-    root = "/Game/Ayon/AyonPublishInstances"
+    root = f"{IMPORT_STORAGE_PATH}/AyonPublishInstances"
     suffix = "_INS"
 
 
