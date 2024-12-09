@@ -13,11 +13,11 @@ import ayon_api
 from ayon_core.pipeline import (
     get_representation_path,
     get_current_project_name,
+    anatomy,
+    context_tools
 )
 from ayon_core.settings import get_current_project_settings
 from ayon_unreal.api import plugin
-
-from ayon_unreal.api.storage import  HALON_PATH_CONFIG
 
 from ayon_unreal.api.pipeline import (
     generate_master_level_sequence,
@@ -27,7 +27,8 @@ from ayon_unreal.api.pipeline import (
     get_top_hierarchy_folder,
     generate_hierarchy_path,
     update_container,
-    remove_map_and_sequence
+    remove_map_and_sequence,
+    IMPORT_STORAGE_PATH
 )
 from ayon_unreal.api.lib import (
     import_animation
@@ -392,7 +393,7 @@ class LayoutLoader(plugin.LayoutLoader):
         hierarchy_dir = container.get("master_directory", "")
         if not hierarchy_dir:
             master_dir_name = get_top_hierarchy_folder(asset_dir)
-            hierarchy_dir = f"{HALON_PATH_CONFIG}/{master_dir_name}"
+            hierarchy_dir = f"{IMPORT_STORAGE_PATH}/{master_dir_name}"
         if create_sequences:
             master_level = f"{hierarchy_dir}/{master_dir_name}_map.{master_dir_name}_map"
             filter = unreal.ARFilter(
@@ -473,9 +474,9 @@ class LayoutLoader(plugin.LayoutLoader):
             # find the level sequence.
             master_directory = container.get("master_directory", "")
             if not master_directory:
-                namespace = container.get('namespace').replace(f"{HALON_PATH_CONFIG}/", "")
+                namespace = container.get('namespace').replace(f"{IMPORT_STORAGE_PATH}/", "")
                 ms_asset = namespace.split('/')[0]
-                master_directory = f"{HALON_PATH_CONFIG}/{ms_asset}"
+                master_directory = f"{IMPORT_STORAGE_PATH}/{ms_asset}"
             ar = unreal.AssetRegistryHelpers.get_asset_registry()
             _filter = unreal.ARFilter(
                 class_names=["LevelSequence"],

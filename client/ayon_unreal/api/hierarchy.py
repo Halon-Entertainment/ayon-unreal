@@ -8,24 +8,23 @@ from ayon_core import (
 )
 from ayon_core.pipeline import (
     get_current_project_name,
-    anatomy
 )
 
 from ayon_core.tools.utils import (
     show_message_dialog,
     PlaceholderLineEdit,
     SquareButton,
+    SimpleFoldersWidget
 )
-from ayon_core.tools.utils import SimpleFoldersWidget
 
 from ayon_unreal.api.pipeline import (
     generate_sequence,
     set_sequence_hierarchy,
+    IMPORT_STORAGE_PATH
 )
 
 import unreal
 
-from ayon_unreal.api.storage import  HALON_PATH_CONFIG
 
 class ConfirmButton(SquareButton):
     def __init__(self, parent=None):
@@ -315,7 +314,7 @@ def build_sequence_hierarchy():
 
     project = get_current_project_name()
 
-    sequence_path = f"{HALON_PATH_CONFIG}/"
+    sequence_path = f"{IMPORT_STORAGE_PATH}/"
 
     folder_selector = FolderSelector(project=project)
 
