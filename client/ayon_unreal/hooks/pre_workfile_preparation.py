@@ -14,6 +14,8 @@ from ayon_applications import (
     ApplicationLaunchFailed,
     LaunchTypes,
 )
+from ayon_core.pipeline.anatomy.anatomy import Anatomy
+from ayon_core.pipeline.template_data import get_template_data
 from ayon_core.settings import get_project_settings
 from ayon_core.pipeline import get_current_project_name
 from ayon_core.pipeline.workfile import get_workfile_template_key
@@ -151,6 +153,26 @@ class UnrealPrelaunchHook(PreLaunchHook):
     def execute(self):
         """Hook entry method."""
         workdir = self.launch_context.env["AYON_WORKDIR"]
+        anatomy = Anatomy(self.data['project_name'])
+        templates = anatomy.templates
+
+        if templates:
+            unreal_template = templates['work']['unreal']
+            self.log.debug(unreal_template)
+            unreal_directory_template =  unreal_template['directory']
+            unreal_filename_template =  unreal_template['file']
+            format_data = get_template_data(self.data['project_entity'])
+            format_data['root'] = anatomy.roots
+            self.log.debug(format_data)
+
+            workdir = unreal_directory_template.format(**format_data)
+            unreal_project_filename = unreal_filename_template.format(**format_data)
+            self.log.debug(f'Project File Name: {unreal_project_filename}')
+
+
+        else:
+            raise ApplicationLaunchFailed("Unable to get templates for unreal.")
+
         executable = str(self.launch_context.executable)
         engine_version = self.app_name.split("/")[-1].replace("-", ".")
         try:
@@ -166,7 +188,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
             # so let's keep it quiet.
             ...
 
-        unreal_project_filename = self._get_work_filename()
         unreal_project_name = os.path.splitext(unreal_project_filename)[0]
         # Unreal is sensitive about project names longer then 20 chars
         if len(unreal_project_name) > 20:
@@ -192,7 +213,7 @@ class UnrealPrelaunchHook(PreLaunchHook):
             project_path = Path(os.path.dirname(last_workfile_path))
             unreal_project_filename = Path(os.path.basename(last_workfile_path))
         else:
-            project_path = Path(os.path.join(workdir, unreal_project_name))
+            project_path = Path(os.path.join(workdir))
             project_path.mkdir(parents=True, exist_ok=True)
 
         self.log.info((
@@ -232,6 +253,7 @@ class UnrealPrelaunchHook(PreLaunchHook):
                 self.exec_plugin_install(engine_path)
 
         project_file = project_path / unreal_project_filename
+        self.log.debug(project_file)
 
         if not project_file.is_file():
 
