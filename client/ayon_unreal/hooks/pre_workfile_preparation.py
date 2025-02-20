@@ -213,7 +213,7 @@ class UnrealPrelaunchHook(PreLaunchHook):
             project_path = Path(os.path.dirname(last_workfile_path))
             unreal_project_filename = Path(os.path.basename(last_workfile_path))
         else:
-            project_path = Path(os.path.join(workdir))
+            project_path = Path(workdir)
             project_path.mkdir(parents=True, exist_ok=True)
 
         self.log.info((
