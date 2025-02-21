@@ -200,18 +200,15 @@ class UnrealPrelaunchHook(PreLaunchHook):
         # in various places inside c++ code and there variable names cannot
         # start with non-alpha. We append 'P' before project name to solve it.
         # 😱
-        unreal_folder_name = self.data['project_settings']['unreal'].get('project_folder')
         if not unreal_project_name[:1].isalpha():
             self.log.warning((
                 "Project name doesn't start with alphabet "
                 f"character ({unreal_project_name}). Appending 'P'"
             ))
-            unreal_folder_name = self.data.get('project_folder')
-            unreal_project_name = f"P{unreal_folder_name}"
+            unreal_project_name = f"P{unreal_project_name}"
             unreal_project_filename = f'{unreal_project_name}.uproject'
 
         last_workfile_path = self.data.get("last_workfile_path")
-        self.log.debug(last_workfile_path)
         if last_workfile_path and os.path.exists(last_workfile_path):
             project_path = Path(os.path.dirname(last_workfile_path))
             unreal_project_filename = Path(os.path.basename(last_workfile_path))
@@ -231,29 +228,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
         # Check if new env variable exists, and if it does, if the path
         # actually contains the plugin. If not, install it.
 
-        built_plugin_path = self.launch_context.env.get(
-            "AYON_BUILT_UNREAL_PLUGIN", None)
-
-        if unreal_lib.check_built_plugin_existance(built_plugin_path):
-            self.log.info((
-                f"{self.signature} using existing built Ayon plugin from "
-                f"{built_plugin_path}"
-            ))
-            unreal_lib.copy_built_plugin(engine_path, Path(built_plugin_path))
-        else:
-            # Set "AYON_UNREAL_PLUGIN" to current process environment for
-            # execution of `create_unreal_project`
-            env_key = "AYON_UNREAL_PLUGIN"
-            if self.launch_context.env.get(env_key):
-                self.log.info((
-                    f"{self.signature} using Ayon plugin from "
-                    f"{self.launch_context.env.get(env_key)}"
-                ))
-            if self.launch_context.env.get(env_key):
-                os.environ[env_key] = self.launch_context.env[env_key]
-
-            if not unreal_lib.check_plugin_existence(engine_path):
-                self.exec_plugin_install(engine_path)
 
         project_file = project_path / unreal_project_filename
         self.log.debug(project_file)
@@ -294,5 +268,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
         self.launch_context.env["AYON_UNREAL_VERSION"] = engine_version
         # Append project file to launch arguments
+        self.log.debug(f"Launch Path: {project_file.as_posix()}")
         self.launch_context.launch_args.append(
             f"\"{project_file.as_posix()}\"")
