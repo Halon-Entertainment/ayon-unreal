@@ -14,6 +14,10 @@ from ayon_applications import (
     ApplicationLaunchFailed,
     LaunchTypes,
 )
+from ayon_core.pipeline.anatomy.anatomy import Anatomy
+from ayon_core.pipeline.template_data import get_template_data
+from ayon_core.settings import get_project_settings
+from ayon_core.pipeline import get_current_project_name
 from ayon_core.pipeline.workfile import get_workfile_template_key
 import ayon_unreal.lib as unreal_lib
 from ayon_unreal.ue_workers import (
@@ -149,6 +153,26 @@ class UnrealPrelaunchHook(PreLaunchHook):
     def execute(self):
         """Hook entry method."""
         workdir = self.launch_context.env["AYON_WORKDIR"]
+        anatomy = Anatomy(self.data['project_name'])
+        templates = anatomy.templates
+
+        if templates:
+            unreal_template = templates['work']['unreal']
+            self.log.debug(unreal_template)
+            unreal_directory_template =  unreal_template['directory']
+            unreal_filename_template =  unreal_template['file']
+            format_data = get_template_data(self.data['project_entity'])
+            format_data['root'] = anatomy.roots
+            self.log.debug(format_data)
+
+            workdir = unreal_directory_template.format(**format_data)
+            unreal_project_filename = unreal_filename_template.format(**format_data)
+            self.log.debug(f'Project File Name: {unreal_project_filename}')
+
+
+        else:
+            raise ApplicationLaunchFailed("Unable to get templates for unreal.")
+
         executable = str(self.launch_context.executable)
         engine_version = self.app_name.split("/")[-1].replace("-", ".")
         try:
@@ -164,7 +188,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
             # so let's keep it quiet.
             ...
 
-        unreal_project_filename = self._get_work_filename()
         unreal_project_name = os.path.splitext(unreal_project_filename)[0]
         # Unreal is sensitive about project names longer then 20 chars
         if len(unreal_project_name) > 20:
@@ -193,7 +216,7 @@ class UnrealPrelaunchHook(PreLaunchHook):
             project_path = Path(os.path.dirname(last_workfile_path))
             unreal_project_filename = Path(os.path.basename(last_workfile_path))
         else:
-            project_path = Path(os.path.join(workdir, unreal_folder_name))
+            project_path = Path(workdir)
             project_path.mkdir(parents=True, exist_ok=True)
 
         self.log.info((
@@ -233,13 +256,21 @@ class UnrealPrelaunchHook(PreLaunchHook):
                 self.exec_plugin_install(engine_path)
 
         project_file = project_path / unreal_project_filename
-        if self.data['project_settings']['unreal'].get('allow_project_creation'):
-            if not project_file.is_file():
+        self.log.debug(project_file)
+
+        if not project_file.is_file():
+
+            #Get project settings -> allow project creation
+            current_project = get_current_project_name()
+            unreal_settings = get_project_settings(current_project).get("unreal")
+            allow_project_creation = unreal_settings["project_setup"].get(
+            "allow_project_creation")
+            if allow_project_creation:
                 with tempfile.TemporaryDirectory() as temp_dir:
                     self.exec_ue_project_gen(engine_version,
-                                            unreal_project_name,
-                                            engine_path,
-                                            Path(temp_dir))
+                                             unreal_project_name,
+                                             engine_path,
+                                             Path(temp_dir))
                     try:
                         self.log.info((
                             f"Moving from {temp_dir} to "
@@ -253,14 +284,13 @@ class UnrealPrelaunchHook(PreLaunchHook):
                             f"{self.signature} Cannot copy directory {temp_dir} "
                             f"to {project_path.as_posix()} - {e}"
                         )) from e
-
-        if not project_file.exists():
-            msg =("Ayon unreal project creation has been disabled for this project. "
-                                            "Please make sure your project has been synced.")
-            raise ApplicationLaunchFailed(msg)
-
-
-
+            else:
+                raise ApplicationLaunchFailed(
+                    f"Could not open project; Project file not found.\n\n"
+                    f"'{project_path.as_posix()}' \n\n"
+                    f"Please contact administrator.\n"
+                    f"Make sure the project is in the correct folder. Or enable 'allow project creation' in studio settings"
+                )
 
         self.launch_context.env["AYON_UNREAL_VERSION"] = engine_version
         # Append project file to launch arguments
