@@ -45,6 +45,11 @@ def _loaded_asset_enum():
 
 
 class UnrealSettings(BaseSettingsModel):
+    enabled: bool= SettingsField(
+        False,
+        title="Enabled",
+        description="Turn Unreal On or Off"
+    )
     project_folder: str = SettingsField(
         "{project[name]}",
         title="Project Folder",
