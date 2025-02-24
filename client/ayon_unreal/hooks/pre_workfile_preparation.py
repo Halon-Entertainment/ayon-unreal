@@ -152,6 +152,12 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
     def execute(self):
         """Hook entry method."""
+
+        project_settings = self.data['project_settings']
+        unreal_settings = project_settings['unreal']
+        if not unreal_settings['enabled']:
+            return
+
         workdir = self.launch_context.env["AYON_WORKDIR"]
         anatomy = Anatomy(self.data['project_name'])
         templates = anatomy.templates
