@@ -6,6 +6,7 @@ import os
 import platform
 import re
 import subprocess
+import stat
 from collections import OrderedDict
 from distutils import dir_util
 from pathlib import Path
@@ -480,7 +481,21 @@ def copy_built_plugin(engine_path: Path, plugin_path: Path) -> None:
 
         dir_util._path_created = {}
 
+    ensure_writeable(ayon_plugin_path)
     dir_util.copy_tree(plugin_path.as_posix(), ayon_plugin_path.as_posix())
+
+def ensure_writeable(plugin_path: Path) -> None:
+    try:
+        for root, dirs, files in os.walk(plugin_path):
+            for dir_name in dirs:
+                dir_path = os.path.join(root, dir_name)
+                os.chmod(dir_path, stat.S_IWUSR | stat.S_IRUSR | stat.S_IXUSR)
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+                os.chmod(file_path, stat.S_IWUSR | stat.S_IRUSR)
+        print("Write permissions unlocked successfully.")
+    except Exception as e:
+        print(f"Failed to unlock write permissions: {e}")
 
 
 def check_plugin_existence(engine_path: Path, env: dict = None) -> bool:
