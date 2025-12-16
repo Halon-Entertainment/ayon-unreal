@@ -2,6 +2,7 @@
 """Load FBX with animations."""
 import json
 import os
+from pprint import pformat, pprint
 import ayon_api
 import unreal
 from ayon_core.pipeline import (AYON_CONTAINER_ID,
@@ -79,68 +80,110 @@ class AnimationFBXLoader(plugin.Loader):
         skeleton, automated, replace=False,
         loaded_options=None
     ):
+        loaded_options = loaded_options or {}
+
+        # ---- validate range inputs (avoid None -> silent failure / no import) ----
+        frame_start = loaded_options.get("frameStart")
+        frame_end = loaded_options.get("frameEnd")
+        if frame_start is None or frame_end is None:
+            # Fall back to exported range (or you can default to 0..0)
+            use_range = False
+        else:
+            use_range = True
+            frame_start = int(frame_start)
+            frame_end = int(frame_end)
+
+        folder_entity = get_current_folder_entity(fields=["attrib.fps"]) or {}
+        fps = (folder_entity.get("attrib") or {}).get("fps")
+        # UE expects an int sample rate; protect against None/float
+        try:
+            fps_int = int(round(float(fps))) if fps is not None else 30
+        except Exception:
+            fps_int = 30
+
         task = unreal.AssetImportTask()
-        task.options = unreal.FbxImportUI()
+        task.set_editor_property("filename", path)
+        task.set_editor_property("destination_path", asset_dir)
+        task.set_editor_property("destination_name", asset_name)
+        task.set_editor_property("replace_existing", bool(replace))
+        task.set_editor_property("automated", not cls.show_dialog)
+        task.set_editor_property("save", False)
 
-        folder_entity = get_current_folder_entity(fields=["attrib.fps"])
+        options = unreal.FbxImportUI()
 
-        task.set_editor_property('filename', path)
-        task.set_editor_property('destination_path', asset_dir)
-        task.set_editor_property('destination_name', asset_name)
-        task.set_editor_property('replace_existing', replace)
-        task.set_editor_property('automated', not cls.show_dialog)
-        task.set_editor_property('save', False)
 
-        # set import options here
-        task.options.set_editor_property(
-            'automated_import_should_detect_type', True)
-        task.options.set_editor_property(
-            'original_import_type', unreal.FBXImportType.FBXIT_SKELETAL_MESH)
-        task.options.set_editor_property(
-            'mesh_type_to_import', unreal.FBXImportType.FBXIT_ANIMATION)
-        task.options.set_editor_property('import_mesh', False)
-        task.options.set_editor_property('import_animations', True)
-        task.options.set_editor_property('override_full_name', True)
-        task.options.set_editor_property('skeleton', skeleton)
-        task.options.anim_sequence_import_data.set_editor_property(
-            'animation_length',
-            unreal.FBXAnimationLengthImportType.FBXALIT_SET_RANGE
-        )
-        task.options.anim_sequence_import_data.set_editor_property(
-            'frame_import_range', unreal.Int32Interval(
-                min=loaded_options.get("frameStart"),
-                max=loaded_options.get("frameEnd")
-        ))
-        task.options.anim_sequence_import_data.set_editor_property(
-            'import_meshes_in_bone_hierarchy', False)
-        task.options.anim_sequence_import_data.set_editor_property(
-            'use_default_sample_rate', False)
-        task.options.anim_sequence_import_data.set_editor_property(
-            'custom_sample_rate', folder_entity.get("attrib", {}).get("fps"))
-        task.options.anim_sequence_import_data.set_editor_property(
-            'import_custom_attribute', True)
-        task.options.anim_sequence_import_data.set_editor_property(
-            'import_bone_tracks', True)
-        task.options.anim_sequence_import_data.set_editor_property(
-            'remove_redundant_keys', False)
-        task.options.anim_sequence_import_data.set_editor_property(
-            'convert_scene', True)
-        task.options.anim_sequence_import_data.set_editor_property(
-            'force_front_x_axis', False)
-        if unreal_pipeline.UNREAL_VERSION.major == 5 and (
-            unreal_pipeline.UNREAL_VERSION.minor <=4
-            ):
-                task.options.anim_sequence_import_data.set_editor_property(
-                    'import_rotation',
-                    unreal.Rotator(roll=90.0, pitch=0.0, yaw=0.0)
-                )
+        # Force the importer mode (don’t let it decide “static mesh”)
+        options.set_editor_property("automated_import_should_detect_type", False)
+
+        # Put importer in skeletal context (animation-only uses this path)
+        options.set_editor_property("original_import_type", unreal.FBXImportType.FBXIT_SKELETAL_MESH)
+        options.set_editor_property("mesh_type_to_import", unreal.FBXImportType.FBXIT_SKELETAL_MESH)
+
+        # Animation-only
+        options.set_editor_property("import_mesh", False)
+        options.set_editor_property("import_animations", True)
+        options.set_editor_property("skeleton", skeleton)
+
+        # If your FBX is hierarchy animation (no skin), this is often required
+        options.set_editor_property("import_rigid_mesh", True)  # hierarchy-based anim :contentReference[oaicite:1]{index=1}
+
+        # Optional: prevent static-mesh-style clutter
+        options.set_editor_property("import_materials", False)
+        options.set_editor_property("import_textures", False)
+
+        anim_data = options.get_editor_property("anim_sequence_import_data")
+
+        if use_range:
+            anim_data.set_editor_property(
+                "animation_length",
+                unreal.FBXAnimationLengthImportType.FBXALIT_SET_RANGE
+            )
+            anim_data.set_editor_property(
+                "frame_import_range",
+                unreal.Int32Interval(min=frame_start, max=frame_end)
+            )
+        else:
+            anim_data.set_editor_property(
+                "animation_length",
+                unreal.FBXAnimationLengthImportType.FBXALIT_EXPORTED_TIME
+            )
+
+        anim_data.set_editor_property("import_meshes_in_bone_hierarchy", False)
+        anim_data.set_editor_property("use_default_sample_rate", False)
+        anim_data.set_editor_property("custom_sample_rate", fps_int)
+
+        anim_data.set_editor_property("import_custom_attribute", True)
+        anim_data.set_editor_property("import_bone_tracks", True)
+        anim_data.set_editor_property("remove_redundant_keys", False)
+        anim_data.set_editor_property("convert_scene", True)
+        anim_data.set_editor_property("force_front_x_axis", False)
+
+        # Keep your UE<=5.4 rotation shim, but harmless in 5.7
+        if unreal_pipeline.UNREAL_VERSION.major == 5 and unreal_pipeline.UNREAL_VERSION.minor <= 4:
+            anim_data.set_editor_property(
+                "import_rotation",
+                unreal.Rotator(roll=90.0, pitch=0.0, yaw=0.0)
+            )
+
+        # IMPORTANT: set options via editor property (more reliable than direct attr assignment)
+        task.set_editor_property("options", options)
+
+        unreal.log_warning(f"[FBX ANIM IMPORT] file={path}")
+        unreal.log_warning(f"[FBX ANIM IMPORT] dest={asset_dir}/{asset_name} replace={replace} fps={fps_int} range={frame_start}-{frame_end if use_range else 'exported'}")
 
         unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+
+        imported = task.get_editor_property("imported_object_paths")
+        unreal.log_warning(f"[FBX ANIM IMPORT] imported_object_paths={imported}")
+
+        # Optional: return imported asset paths to the caller
+        return imported
 
     def _process(self, path, asset_dir, asset_name,
                  instance_name, loaded_options=None):
         automated = False
         actor = None
+
 
         if instance_name:
             automated = True

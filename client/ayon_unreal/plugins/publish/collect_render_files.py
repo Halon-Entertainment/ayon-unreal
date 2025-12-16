@@ -1,7 +1,9 @@
 from pathlib import Path
 import os
+from pprint import pprint, pformat
 import unreal
 
+from ayon_api import get_folder_by_path
 from ayon_core.pipeline import get_current_project_name, Anatomy
 from ayon_core.pipeline.publish import PublishError
 from ayon_unreal.api import pipeline
@@ -21,9 +23,12 @@ class CollectRenderFiles(pyblish.api.InstancePlugin):
     def process(self, instance):
         self.log.debug("Collecting rendered files")
         context = instance.context
+        self.log.debug(pformat(context))
 
         data = instance.data
         data['remove'] = True
+
+        folder_entity = get_folder_by_path(get_current_project_name(), data['folderPath'])
 
         ar = unreal.AssetRegistryHelpers.get_asset_registry()
 
@@ -63,10 +68,11 @@ class CollectRenderFiles(pyblish.api.InstancePlugin):
                     new_product_name
                 )
                 new_instance[:] = seq_name
-
                 new_data = new_instance.data
 
+
                 new_data["folderPath"] = instance.data["folderPath"]
+                new_data["folder"] = folder_entity
                 new_data["setMembers"] = seq_name
                 new_data["productName"] = new_product_name
                 new_data["productType"] = product_type
@@ -121,4 +127,9 @@ class CollectRenderFiles(pyblish.api.InstancePlugin):
                     'stagingDir': render_dir,
                     'tags': ['review']
                 }
+                self.log.debug(">>>>>>>>>> Representation")
+                self.log.debug(pformat(repr))
+                self.log.debug(">>>>>>>>>> Context")
+                self.log.debug(pformat(context))
+                self.log.debug(">>>>>>>>>> Instance")
                 new_instance.data["representations"].append(repr)
