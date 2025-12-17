@@ -9,10 +9,6 @@ from ayon_core.pipeline import Anatomy
 from ayon_unreal.api import pipeline
 from ayon_core.tools.utils import show_message_dialog
 
-
-queue = None
-executor = None
-
 SUPPORTED_EXTENSION_MAP = {
     "png": unreal.MoviePipelineImageSequenceOutput_PNG,
     "exr": unreal.MoviePipelineImageSequenceOutput_EXR,
@@ -23,12 +19,6 @@ SUPPORTED_EXTENSION_MAP = {
 
 def _queue_finish_callback(exec, success):
     unreal.log(f"Render completed. Success: {str(success)}")
-
-    # Delete our reference so we don't keep it alive.
-    global executor
-    global queue
-    del executor
-    del queue
 
 
 def _job_finish_callback(job, success):
@@ -156,11 +146,7 @@ def start_rendering():
     # instances = pipeline.ls_inst()
     instances = [
         a for a in assets
-        if a.get_class().get_name() in (
-            "AyonPublishInstance",
-            "AyonPublishInstance_C",
-        )
-    ]
+        if a.get_class().get_name() in ["AyonPublishInstance", "AyonPublishInstance_C"]]
     if not instances:
         show_message_dialog(
             title="No AyonPublishInstance selected",
@@ -186,11 +172,8 @@ def start_rendering():
 
     render_dir = f"{root}/{project_name}"
 
-    # subsystem = unreal.get_editor_subsystem(
-    #     unreal.MoviePipelineQueueSubsystem)
-    # queue = subsystem.get_queue()
-    global queue
-    queue = unreal.MoviePipelineQueue()
+    subsystem = unreal.get_editor_subsystem(unreal.MoviePipelineQueueSubsystem)
+    queue = subsystem.get_queue()
 
     ar = unreal.AssetRegistryHelpers.get_asset_registry()
 
@@ -297,16 +280,15 @@ def start_rendering():
 
     # If there are jobs in the queue, start the rendering process.
     if queue.get_jobs():
-        global executor
         executor = unreal.MoviePipelinePIEExecutor()
-        preroll_frames = render_settings.get("preroll_frames", 0)
 
-        settings = unreal.MoviePipelinePIEExecutorSettings()
-        settings.set_editor_property(
-            "initial_delay_frame_count", preroll_frames)
+        preroll_frames = render_settings.get("preroll_frames", 0)
+        if preroll_frames:
+            executor.set_initial_delay_frames(preroll_frames)
 
         executor.on_executor_finished_delegate.add_callable_unique(
             _queue_finish_callback)
         executor.on_individual_job_finished_delegate.add_callable_unique(
-            _job_finish_callback)  # Only available on PIE Executor
-        executor.execute(queue)
+            _job_finish_callback)
+
+        subsystem.render_queue_with_executor_instance(executor)
