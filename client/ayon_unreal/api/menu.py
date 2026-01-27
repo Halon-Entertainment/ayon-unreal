@@ -119,6 +119,9 @@ class AYONExperimentalItem(AYONPythonMenuTool):
 def init_ayon_menu():
     menus = unreal.ToolMenus.get()
     main_menu = menus.find_menu("LevelEditor.MainMenu")
+    if not main_menu:
+        unreal.log_warning("AYON: Could not find LevelEditor.MainMenu")
+        return
     ayon_menu = main_menu.add_sub_menu(
         owner="ayon_manager_id",
         section_name="",
@@ -129,3 +132,5 @@ def init_ayon_menu():
 
     for item in menu_items:
         item(ayon_menu)
+    
+    menus.refresh_all_widgets()

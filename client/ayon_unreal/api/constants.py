@@ -7,9 +7,10 @@ AYON_CONTAINERS = "AyonContainers"
 AYON_ROOT_DIR = "/Game/Ayon"
 AYON_ASSET_DIR = "/Game/Ayon/Assets"
 CONTEXT_CONTAINER = "Ayon/context.json"
-UNREAL_VERSION = semver.VersionInfo(
-    *os.getenv("AYON_UNREAL_VERSION").split(".")
-)
+_version_parts = os.getenv("AYON_UNREAL_VERSION", "0.0").split(".")
+while len(_version_parts) < 3:
+    _version_parts.append("0")
+UNREAL_VERSION = semver.VersionInfo(*[int(p) for p in _version_parts[:3]])
 
 PLUGINS_DIR = os.path.join(UNREAL_ADDON_ROOT, "plugins")
 PUBLISH_PATH = os.path.join(PLUGINS_DIR, "publish")

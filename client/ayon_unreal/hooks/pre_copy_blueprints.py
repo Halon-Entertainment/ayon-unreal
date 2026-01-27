@@ -13,9 +13,12 @@ class CopyBlueprints(PreLaunchHook):
 
     def execute(self):
         self.log.info("Running Copy Blueprints")
-        unreal_version = semver.VersionInfo.parse(
-            self.launch_context.env.get("AYON_UNREAL_VERSION")
-        )
+        version_str = self.launch_context.env.get("AYON_UNREAL_VERSION", "0.0")
+        # Coerce to valid semver (e.g. "5.7" -> "5.7.0")
+        version_parts = version_str.split(".")
+        while len(version_parts) < 3:
+            version_parts.append("0")
+        unreal_version = semver.VersionInfo.parse(".".join(version_parts[:3]))
         if unreal_version >= semver.VersionInfo(5, 6, 0):
             self.log.info(f"Skipping Asset Copy for {str(unreal_version)}")
             return
