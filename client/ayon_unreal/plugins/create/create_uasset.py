@@ -15,7 +15,9 @@ class CreateUAsset(UnrealAssetCreator):
     identifier = "io.ayon.creators.unreal.uasset"
     label = "UAsset"
     product_type = "uasset"
+    product_base_type = "uasset"
     icon = "cube"
+    default_variants = ["Main"]
 
     extension = ".uasset"
 

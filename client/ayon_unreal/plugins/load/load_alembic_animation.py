@@ -3,12 +3,10 @@
 import os
 
 from ayon_core.lib import EnumDef
-from ayon_core.pipeline import (
-    get_representation_path,
-    AYON_CONTAINER_ID
-)
+from ayon_core.pipeline import AYON_CONTAINER_ID
 from ayon_unreal.api import plugin
 from ayon_unreal.api import pipeline as unreal_pipeline
+from ayon_core.settings import get_current_project_settings
 import unreal  # noqa
 
 
@@ -22,19 +20,20 @@ class AnimationAlembicLoader(plugin.Loader):
     icon = "cube"
     color = "orange"
     abc_conversion_preset = "maya"
-    loaded_asset_dir = "{folder[path]}/{product[name]}"
+    # check frame padding
+    loaded_asset_dir = "{folder[path]}/{product[name]}_{version[version]}"
+    loaded_asset_name = "{folder[name]}_{product[name]}_{version[version]}_{representation[name]}"      # noqa
+    show_dialog = False
 
     @classmethod
     def apply_settings(cls, project_settings):
         super(AnimationAlembicLoader, cls).apply_settings(project_settings)
         # Apply import settings
-        unreal_settings = project_settings.get("unreal", {})
-        if unreal_settings.get("abc_conversion_preset", cls.abc_conversion_preset):
-            cls.abc_conversion_preset = unreal_settings.get(
-                "abc_conversion_preset", cls.abc_conversion_preset)
-        if unreal_settings.get("loaded_asset_dir", cls.loaded_asset_dir):
-            cls.loaded_asset_dir = unreal_settings.get(
-                    "loaded_asset_dir", cls.loaded_asset_dir)
+        unreal_settings = project_settings["unreal"]["import_settings"]
+        cls.abc_conversion_preset = unreal_settings["abc_conversion_preset"]
+        cls.loaded_asset_dir = unreal_settings["loaded_asset_dir"]
+        cls.loaded_asset_name = unreal_settings["loaded_asset_name"]
+        cls.show_dialog = unreal_settings["show_dialog"]
 
     @classmethod
     def get_options(cls, contexts):
@@ -43,8 +42,9 @@ class AnimationAlembicLoader(plugin.Loader):
                 "abc_conversion_preset",
                 label="Alembic Conversion Preset",
                 items={
-                    "custom": "custom",
-                    "maya": "maya"
+                    "3dsmax": "3dsmax",
+                    "maya": "maya",
+                    "custom": "custom"
                 },
                 default=cls.abc_conversion_preset
             )
@@ -67,12 +67,36 @@ class AnimationAlembicLoader(plugin.Loader):
                     flip_u=False, flip_v=True,
                     rotation=[90.0, 0.0, 0.0],
                     scale=[1.0, -1.0, 1.0])
+        elif abc_conversion_preset == "3dsmax":
+            if unreal_pipeline.UNREAL_VERSION.major >= 5:
+                    conversion_settings = unreal.AbcConversionSettings(
+                        preset=unreal.AbcConversionPreset.MAX)
+            else:
+                conversion_settings = unreal.AbcConversionSettings(
+                    preset=unreal.AbcConversionPreset.CUSTOM,
+                    flip_u=False, flip_v=True,
+                    rotation=[0.0, 0.0, 0.0],
+                    scale=[1.0, -1.0, 1.0])
         else:
+            data = get_current_project_settings()
+            preset = (
+                data["unreal"]["import_settings"]["custom"]
+            )
             conversion_settings = unreal.AbcConversionSettings(
                 preset=unreal.AbcConversionPreset.CUSTOM,
-                flip_u=False, flip_v=False,
-                rotation=[0.0, 0.0, 0.0],
-                scale=[1.0, 1.0, 1.0])
+                flip_u=preset["flip_u"],
+                flip_v=preset["flip_v"],
+                rotation=[
+                    preset["rot_x"],
+                    preset["rot_y"],
+                    preset["rot_z"]
+                ],
+                scale=[
+                    preset["scl_x"],
+                    preset["scl_y"],
+                    preset["scl_z"]
+                ]
+            )
 
         options.sampling_settings.frame_start = loaded_options.get("frameStart")
         options.sampling_settings.frame_end = loaded_options.get("frameEnd")
@@ -80,7 +104,7 @@ class AnimationAlembicLoader(plugin.Loader):
         task.set_editor_property('destination_path', asset_dir)
         task.set_editor_property('destination_name', asset_name)
         task.set_editor_property('replace_existing', replace)
-        task.set_editor_property('automated', True)
+        task.set_editor_property('automated', not self.show_dialog)
         task.set_editor_property('save', True)
 
         options.set_editor_property(
@@ -93,22 +117,18 @@ class AnimationAlembicLoader(plugin.Loader):
         return task
 
     def import_and_containerize(
-        self, filepath, asset_dir, asset_name, container_name, loaded_options,
-        asset_path=None
+        self, filepath, asset_dir, asset_name, container_name, loaded_options
     ):
         task = None
-        if asset_path:
-            loaded_asset_dir = os.path.dirname(asset_path)
-            task = self.get_task(filepath, loaded_asset_dir, asset_name, True, loaded_options)
-        else:
-            if not unreal.EditorAssetLibrary.does_asset_exist(
-                f"{asset_dir}/{asset_name}"):
-                    task = self.get_task(
-                        filepath, asset_dir, asset_name, False, loaded_options
-                    )
+        if not unreal.EditorAssetLibrary.does_directory_exist(asset_dir):
+            unreal.EditorAssetLibrary.make_directory(asset_dir)
+        if not unreal.EditorAssetLibrary.does_asset_exist(
+            f"{asset_dir}/{asset_name}"):
+                task = self.get_task(
+                    filepath, asset_dir, asset_name, False, loaded_options
+                )
 
         unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
-
         # avoid duplicate container asset data being created
         if not unreal.EditorAssetLibrary.does_asset_exist(
             f"{asset_dir}/{container_name}"):
@@ -116,6 +136,7 @@ class AnimationAlembicLoader(plugin.Loader):
             unreal_pipeline.create_container(
                 container=container_name, path=asset_dir)
 
+        return asset_dir
 
     def imprint(
         self,
@@ -126,7 +147,9 @@ class AnimationAlembicLoader(plugin.Loader):
         frameStart,
         frameEnd,
         representation,
-        product_type
+        product_type,
+        project_name,
+        layout
     ):
         data = {
             "schema": "ayon:container-2.0",
@@ -143,14 +166,16 @@ class AnimationAlembicLoader(plugin.Loader):
             "frameEnd": frameEnd,
             # TODO these should be probably removed
             "asset": folder_path,
-            "family": product_type
+            "family": product_type,
+            "project_name": project_name,
+            "layout": layout
         }
         unreal_pipeline.imprint(f"{asset_dir}/{container_name}", data)
 
     def load(self, context, name, namespace, options):
         """Load and containerise representation into Content Browser.
 
-        This is two step process. First, import FBX to temporary path and
+        This is two-step process. First, import FBX to temporary path and
         then call `containerise()` on it - this moves all content to new
         directory and then it will create AssetContainer there and imprint it
         with metadata. This will mark this path as container.
@@ -172,43 +197,41 @@ class AnimationAlembicLoader(plugin.Loader):
         # Create directory for asset and ayon container
         folder_entity = context["folder"]
         folder_path = context["folder"]["path"]
-        hierarchy = folder_path.lstrip("/").split("/")
-        folder_name = hierarchy.pop(-1)
         product_type = context["product"]["productType"]
         suffix = "_CON"
         path = self.filepath_from_context(context)
-        ext = os.path.splitext(path)[-1].lstrip(".")
         asset_root, asset_name = unreal_pipeline.format_asset_directory(
-            name, context, self.loaded_asset_dir, extension=ext
+            context, self.loaded_asset_dir, self.loaded_asset_name
         )
 
         tools = unreal.AssetToolsHelpers().get_asset_tools()
         asset_dir, container_name = tools.create_unique_asset_name(
-            asset_root, suffix=f"_{ext}")
+            asset_root, suffix="")
 
         container_name += suffix
-        asset_path = unreal_pipeline.has_asset_directory_pattern_matched(
-            asset_name, asset_dir, folder_name, extension=ext)
-        if not unreal.EditorAssetLibrary.does_directory_exist(asset_dir):
-            unreal.EditorAssetLibrary.make_directory(asset_dir)
+
+        path = self.filepath_from_context(context)
+        should_use_layout = options.get("layout", False)
+
+        # Get existing asset dir if possible, otherwise import & containerize
+        if should_use_layout and (
+            existing_asset_dir := (
+                 unreal_pipeline.get_dir_from_existing_asset(
+                      asset_dir, asset_name
+                    )
+                )
+            ):
+                asset_dir = existing_asset_dir
+        else:
             loaded_options = {
                 "abc_conversion_preset": options.get(
                     "abc_conversion_preset", self.abc_conversion_preset),
                 "frameStart": folder_entity["attrib"]["frameStart"],
-                "frameEnd": folder_entity["attrib"]["frameEnd"]
+                "frameEnd": folder_entity["attrib"]["frameEnd"],
             }
-
-        path = self.filepath_from_context(context)
-        self.import_and_containerize(
-            path, asset_dir, asset_name,
-            container_name, loaded_options,
-            asset_path=asset_path
-        )
-
-        if asset_path:
-            unreal.EditorAssetLibrary.rename_asset(
-                f"{asset_path}",
-                f"{asset_dir}/{asset_name}.{asset_name}"
+            asset_dir = self.import_and_containerize(
+                path, asset_dir, asset_name,
+                container_name, loaded_options
             )
 
         # update metadata
@@ -220,7 +243,9 @@ class AnimationAlembicLoader(plugin.Loader):
             folder_entity["attrib"]["frameStart"],
             folder_entity["attrib"]["frameEnd"],
             context["representation"],
-            product_type
+            product_type,
+            context["project"]["name"],
+            should_use_layout
         )
 
         asset_content = unreal.EditorAssetLibrary.list_assets(
@@ -234,17 +259,17 @@ class AnimationAlembicLoader(plugin.Loader):
 
     def update(self, container, context):
         folder_path = context["folder"]["path"]
-        product_name = context["product"]["name"]
         product_type = context["product"]["productType"]
         repre_entity = context["representation"]
 
         # Create directory for folder and Ayon container
         suffix = "_CON"
-        source_path = get_representation_path(repre_entity)
+        source_path = self.filepath_from_context(context)
 
         ext = os.path.splitext(source_path)[-1].lstrip(".")
+
         asset_root, asset_name = unreal_pipeline.format_asset_directory(
-            product_name, context, self.loaded_asset_dir, extension=ext
+            context, self.loaded_asset_dir, self.loaded_asset_name
         )
         # do import fbx and replace existing data
         asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -252,18 +277,28 @@ class AnimationAlembicLoader(plugin.Loader):
              asset_root, suffix=f"_{ext}")
 
         container_name += suffix
-        if not unreal.EditorAssetLibrary.does_directory_exist(asset_dir):
-            unreal.EditorAssetLibrary.make_directory(asset_dir)
-        loaded_options = {
-            "abc_conversion_preset": self.abc_conversion_preset,
-            "frameStart": int(container.get("frameStart", "1")),
-            "frameEnd": int(container.get("frameEnd", "1"))
-        }
+        should_use_layout = container.get("layout", False)
 
-        self.import_and_containerize(
-            source_path, asset_dir, asset_name,
-            container_name, loaded_options
-        )
+        # Get existing asset dir if possible, otherwise import & containerize
+        if should_use_layout and (
+            existing_asset_dir := (
+                 unreal_pipeline.get_dir_from_existing_asset(
+                      asset_dir, asset_name
+                    )
+                )
+            ):
+                asset_dir = existing_asset_dir
+        else:
+            loaded_options = {
+                "abc_conversion_preset": self.abc_conversion_preset,
+                "frameStart": int(container.get("frameStart", "1")),
+                "frameEnd": int(container.get("frameEnd", "1"))
+            }
+
+            asset_dir = self.import_and_containerize(
+                source_path, asset_dir, asset_name,
+                container_name, loaded_options
+            )
 
         # update metadata
         self.imprint(
@@ -274,7 +309,9 @@ class AnimationAlembicLoader(plugin.Loader):
             container.get("frameStart", "1"),
             container.get("frameEnd", "1"),
             repre_entity,
-            product_type
+            product_type,
+            context["project"]["name"],
+            should_use_layout
         )
         asset_content = unreal.EditorAssetLibrary.list_assets(
             asset_dir, recursive=True, include_folder=True

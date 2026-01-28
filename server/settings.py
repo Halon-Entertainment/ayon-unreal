@@ -1,30 +1,8 @@
 from ayon_server.settings import BaseSettingsModel, SettingsField
 from .imageio import UnrealImageIOModel
-from .import_settings import UnrealImportModel
-
-
-class ProjectSetup(BaseSettingsModel):
-    allow_project_creation: bool = SettingsField(
-        True,
-        title="Allow project creation",
-        description="Whether to create a new project when none is found. Disable when using external source controll (Perforce)"
-    )
-    dev_mode: bool = SettingsField(
-        False,
-        title="Dev mode"
-    )
-    allow_project_creation: bool = SettingsField(
-        False,
-        title="Allow Project Creation",
-        description="Allows Ayon to create the unreal project."
-    )
-
-
-def _abc_conversion_presets_enum():
-    return [
-        {"value": "maya", "label": "maya"},
-        {"value": "custom", "label": "custom"}
-    ]
+from .import_settings import UnrealImportModel, DEFAULT_IMPORT_SETTINGS
+from .pre_launch_settings import UnrealPreLaunchSetting, DEFAULT_PRELAUNCH_SETTINGS
+from .creators import CreatorsModel, DEFAULT_CREATOR_SETTINGS
 
 
 def _render_format_enum():
@@ -36,77 +14,11 @@ def _render_format_enum():
     ]
 
 
-def _loaded_asset_enum():
-    return [
-        {"value": "json", "label": "json"},
-        {"value": "fbx", "label": "fbx"},
-        {"value": "abc", "label": "abc"}
-    ]
-
-
-class UnrealSettings(BaseSettingsModel):
-    enabled: bool= SettingsField(
-        False,
-        title="Enabled",
-        description="Turn Unreal On or Off"
-    )
-    project_folder: str = SettingsField(
-        "{project[name]}",
-        title="Project Folder",
-        description="Project Folder"
-    )
-    imageio: UnrealImageIOModel = SettingsField(
-        default_factory=UnrealImageIOModel,
-        title="Color Management (ImageIO)"
-    )
-    loaded_asset_dir: str = SettingsField(
-        "{folder[path]}/{product[name]}",
-        title="Asset directories for loaded assets",
-        description="Asset directories to store the loaded assets"
-    )
-    import_settings: UnrealImportModel = SettingsField(
-        default_factory=UnrealImportModel,
-        title="Import settings"
-    )
-    level_sequences_for_layouts: bool = SettingsField(
-        False,
-        title="Generate level sequences when loading layouts"
-    )
-    remove_loaded_assets: bool = SettingsField(
-        False,
-        title="Remove loaded assets when deleting layouts"
-    )
-    delete_unmatched_assets: bool = SettingsField(
-        False,
-        title="Delete assets that are not matched",
-        description=(
-            "When enabled removes all unmatched assets "
-            "present in the current layout when performing "
-            "'Load Layout (JSON) on existing'"
-        )
-    )
-    abc_conversion_preset: str = SettingsField(
-        "maya",
-        title="Alembic Conversion Setting Presets",
-        enum_resolver=_abc_conversion_presets_enum,
-        description="Presets for converting the loaded alembic "
-                    "with correct UV and transform"
-    )
-    force_loaded: bool = SettingsField(
-        False,
-        title="Enable user override layout representation",
-        description="Loading assets by override layout representation type"
-    )
-    folder_representation_type: str = SettingsField(
-        "json",
-        title="Override layout representation by",
-        enum_resolver=_loaded_asset_enum,
-        description="The overriding folder representation type during loading"
-    )
+class RenderSetUp(BaseSettingsModel):
     render_queue_path: str = SettingsField(
         "",
         title="Render Queue Path",
-        description="Path to Render Queue UAsset for farm publishing"
+        description="Path to Render Queue UAsset for farm publishing",
     )
     render_config_path: str = SettingsField(
         "",
@@ -122,25 +34,78 @@ class UnrealSettings(BaseSettingsModel):
         title="Render format",
         enum_resolver=_render_format_enum
     )
+
+
+class ProjectSetup(BaseSettingsModel):
+    allow_project_creation: bool = SettingsField(
+        True,
+        title="Allow project creation",
+        description=(
+            "Whether to create a new project when none is found. "
+            "Disable when using external source control (Perforce)"
+        )
+    )
+    existing_uproject_directory : str = SettingsField(
+        "",
+        title="Use Existing UProject for Project Creation",
+        description=(
+            "Path to an existing .uproject file to use for "
+            "project creation."
+        )
+    )
+    force_existing_project: bool = SettingsField(
+        True,
+        title="Force existing project",
+        description=(
+            "If enabled, the project must exist for Unreal to launch."
+        )
+    )
+    dev_mode: bool = SettingsField(
+        False,
+        title="Dev mode"
+    )
+
+
+class UnrealSettings(BaseSettingsModel):
+    imageio: UnrealImageIOModel = SettingsField(
+        default_factory=UnrealImageIOModel,
+        title="Color Management (ImageIO)"
+    )
+    prelaunch_settings: UnrealPreLaunchSetting = SettingsField(
+        default_factory=UnrealPreLaunchSetting,
+        title="Prelaunch Settings"
+    )
+    import_settings: UnrealImportModel = SettingsField(
+        default_factory=UnrealImportModel,
+        title="Import settings"
+    )
+    render_setup: RenderSetUp = SettingsField(
+        default_factory=RenderSetUp,
+        title="Render Setup",
+    )
     project_setup: ProjectSetup = SettingsField(
         default_factory=ProjectSetup,
         title="Project Setup",
     )
+    create: CreatorsModel = SettingsField(
+        default_factory=CreatorsModel, title="Creators"
+    )
 
 
 DEFAULT_VALUES = {
-    "loaded_asset_dir": "{folder[path]}/{product[name]}",
-    "level_sequences_for_layouts": True,
-    "remove_loaded_assets": False,
-    "delete_unmatched_assets": False,
-    "abc_conversion_preset": "maya",
-    "force_loaded": False,
-    "folder_representation_type": "json",
-    "render_queue_path": "/Game/Ayon/renderQueue",
-    "render_config_path": "/Game/Ayon/DefaultMovieRenderQueueConfig.DefaultMovieRenderQueueConfig",
-    "preroll_frames": 0,
-    "render_format": "exr",
+    "prelaunch_settings": DEFAULT_PRELAUNCH_SETTINGS,
+    "import_settings": DEFAULT_IMPORT_SETTINGS,
+    "render_setup": {
+        "render_queue_path": "/Game/Ayon/renderQueue",
+        "render_config_path": "/Game/Ayon/DefaultMovieRenderQueueConfig.DefaultMovieRenderQueueConfig",
+        "preroll_frames": 0,
+        "render_format": "exr",
+    },
     "project_setup": {
-        "dev_mode": False
-    }
+        "allow_project_creation": True,
+        "existing_uproject_directory": "",
+        "dev_mode": False,
+        "force_existing_project": False,
+    },
+    "create": DEFAULT_CREATOR_SETTINGS,
 }
