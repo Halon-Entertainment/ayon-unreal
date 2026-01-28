@@ -159,6 +159,11 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
     def execute(self):
         """Hook entry method."""
+        # Halon: Check if unreal addon is enabled
+        project_settings = self.data["project_settings"]
+        unreal_settings = project_settings["unreal"]
+        if not unreal_settings.get('enabled', True):
+            return
 
         workdir = self.launch_context.env["AYON_WORKDIR"]
         anatomy = Anatomy(self.data['project_name'])
@@ -237,9 +242,17 @@ class UnrealPrelaunchHook(PreLaunchHook):
         else:
             engine_path: Path = Path(executable).parents[3]
 
-        # Check if new env variable exists, and if it does, if the path
-        # actually contains the plugin. If not, install it.
+        # Halon: Check for built plugin
+        built_plugin_path = self.launch_context.env.get(
+            "AYON_BUILT_UNREAL_PLUGIN", None)
 
+        if "AYON_BUILT_UNREAL_PLUGIN" not in os.environ:
+            raise ApplicationLaunchFailed(f"Failed to find plugin: {built_plugin_path}")
+
+        if os.path.exists(os.environ['AYON_BUILT_UNREAL_PLUGIN']):
+            built_plugin_path = os.environ['AYON_BUILT_UNREAL_PLUGIN']
+            self.log.debug(f"Plugin exists: {built_plugin_path}")
+            os.environ["AYON_UNREAL_PLUGIN"] = built_plugin_path
 
         project_file = project_path / unreal_project_filename
         self.log.debug(project_file)

@@ -14,6 +14,21 @@ def _render_format_enum():
     ]
 
 
+def _loaded_asset_enum():
+    return [
+        {"value": "json", "label": "json"},
+        {"value": "fbx", "label": "fbx"},
+        {"value": "abc", "label": "abc"}
+    ]
+
+
+def _abc_conversion_presets_enum():
+    return [
+        {"value": "maya", "label": "maya"},
+        {"value": "custom", "label": "custom"}
+    ]
+
+
 class RenderSetUp(BaseSettingsModel):
     render_queue_path: str = SettingsField(
         "",
@@ -67,6 +82,11 @@ class ProjectSetup(BaseSettingsModel):
 
 
 class UnrealSettings(BaseSettingsModel):
+    enabled: bool = SettingsField(
+        False,
+        title="Enabled",
+        scope=['studio', 'project']
+    )
     imageio: UnrealImageIOModel = SettingsField(
         default_factory=UnrealImageIOModel,
         title="Color Management (ImageIO)"
@@ -90,14 +110,30 @@ class UnrealSettings(BaseSettingsModel):
     create: CreatorsModel = SettingsField(
         default_factory=CreatorsModel, title="Creators"
     )
+    # Halon custom settings
+    import_storage_path: str = SettingsField(
+        "",
+        title="Custom Storage Path",
+        description="Import base directory for content"
+    )
+    sequence_import_root: str = SettingsField(
+        "",
+        title="Sequence directory root name",
+        description="Named sequence folder base directory"
+    )
+    asset_import_root: str = SettingsField(
+        "",
+        title="Asset directory root name",
+        description="Named asset folder base directory"
+    )
 
 
 DEFAULT_VALUES = {
     "prelaunch_settings": DEFAULT_PRELAUNCH_SETTINGS,
     "import_settings": DEFAULT_IMPORT_SETTINGS,
     "render_setup": {
-        "render_queue_path": "/Game/Ayon/renderQueue",
-        "render_config_path": "/Game/Ayon/DefaultMovieRenderQueueConfig.DefaultMovieRenderQueueConfig",
+        "render_queue_path": "/Game/Halon/renderQueue",
+        "render_config_path": "/Game/Halon/DefaultMovieRenderQueueConfig.DefaultMovieRenderQueueConfig",
         "preroll_frames": 0,
         "render_format": "exr",
     },
@@ -108,4 +144,7 @@ DEFAULT_VALUES = {
         "force_existing_project": False,
     },
     "create": DEFAULT_CREATOR_SETTINGS,
+    "import_storage_path": "/Game/Halon",
+    "sequence_import_root": "Sequence",
+    "asset_import_root": "Assets",
 }

@@ -26,7 +26,7 @@ class AnimationFBXLoader(plugin.Loader):
     icon = "cube"
     color = "orange"
 
-    root = unreal_pipeline.AYON_ROOT_DIR
+    root = unreal_pipeline.HALON_PATH_CONFIG
     loaded_asset_dir = "{folder[path]}/{product[name]}_{version[version]}"
     loaded_asset_name = "{folder[name]}_{product[name]}_{version[version]}_{representation[name]}"      # noqa
     show_dialog = False
