@@ -93,7 +93,7 @@ class ProjectSetup(BaseSettingsModel):
 
 class UnrealSettings(BaseSettingsModel):
     enabled: bool = SettingsField(
-        False,
+        True,
         title="Enabled",
         scope=['studio', 'project']
     )

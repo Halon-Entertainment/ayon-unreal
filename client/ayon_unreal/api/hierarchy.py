@@ -20,8 +20,8 @@ from ayon_core.tools.utils import (
 from ayon_unreal.api.pipeline import (
     generate_sequence,
     set_sequence_hierarchy,
-    IMPORT_STORAGE_PATH
 )
+from ayon_unreal.api.constants import IMPORT_STORAGE_PATH
 
 import unreal
 

@@ -31,9 +31,25 @@ def create_base_asset_container(container_name):
 class NativeUnrealBackend(UnrealBackend):
     @staticmethod
     def install():
-        # Deferred import to avoid circular import
-        from ayon_unreal.api.menu import init_ayon_menu
-        init_ayon_menu()
+        from pathlib import Path
+        debug_file = Path.home() / "ayon_unreal_startup_debug.txt"
+        def debug_log(msg):
+            print(f"[AYON NATIVE] {msg}")
+            with open(debug_file, "a") as f:
+                f.write(f"{msg}\n")
+        
+        debug_log("NativeUnrealBackend.install() called")
+        try:
+            # Deferred import to avoid circular import
+            debug_log("Importing init_ayon_menu...")
+            from ayon_unreal.api.menu import init_ayon_menu
+            debug_log("Calling init_ayon_menu()...")
+            init_ayon_menu()
+            debug_log("init_ayon_menu() completed")
+        except Exception as e:
+            import traceback
+            debug_log(f"Error in install: {e}")
+            debug_log(traceback.format_exc())
 
         if UNREAL_VERSION >= semver.VersionInfo(5, 6, 0):
             create_base_asset_container('AyonAssetContainer')

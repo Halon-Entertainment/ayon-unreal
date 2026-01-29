@@ -12,6 +12,12 @@ class CopyBlueprints(PreLaunchHook):
     order = 1
 
     def execute(self):
+        # Halon: Check if unreal addon is enabled
+        project_settings = self.data["project_settings"]
+        unreal_settings = project_settings["unreal"]
+        if not unreal_settings.get('enabled', True):
+            return
+
         self.log.info("Running Copy Blueprints")
         version_str = self.launch_context.env.get("AYON_UNREAL_VERSION", "0.0")
         # Coerce to valid semver (e.g. "5.7" -> "5.7.0")

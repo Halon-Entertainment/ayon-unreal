@@ -29,13 +29,12 @@ from ayon_core.tools.utils import host_tools
 
 from ayon_unreal.api.backends import get_backend_class
 from ayon_unreal.api.constants import (
-    AYON_ROOT_DIR,
     CONTEXT_CONTAINER,
     CREATE_PATH,
+    IMPORT_STORAGE_PATH,
     INVENTORY_PATH,
     LOAD_PATH,
     PUBLISH_PATH,
-    UNREAL_VERSION,
 )
 
 
@@ -840,19 +839,40 @@ def select_camera(sequence):
                 actor_subsys.set_actor_selection_state(actor, False)
 
 
-def format_asset_directory(context, directory_template):
+def format_asset_directory(context, directory_template, asset_name_template=None):
     """Setting up the asset directory path and name.
     Args:
-        name (str): Instance name
         context (dict): context
         directory_template (str): directory template path
-        extension (str, optional): file extension. Defaults to "abc".
+        asset_name_template (str, optional): asset name template
+
     Returns:
         tuple[str, str]: asset directory, asset name
     """
 
     data = copy.deepcopy(context)
+    if "{product[type]}" in directory_template:
+        unreal.warning(
+            "Deprecated settings: AYON is using settings "
+            "that won't work in future releases. "
+            "Details: {product[type]} in the template should "
+            "be replaced with {product[productType]}."
+        )
+        directory_template = directory_template.replace(
+            "{product[type]}", "{product[productType]}")
+
+    if "{folder[type]}" in directory_template:
+        unreal.warning(
+            "Deprecated settings: AYON is using settings "
+            "that won't work in future releases. "
+            "Details: {folder[type]} in the template should "
+            "be replaced with {folder[folderType]}."
+        )
+        directory_template = directory_template.replace(
+            "{folder[type]}", "{folder[folderType]}")
+
     version = data["version"]["version"]
+
     # if user set {version[version]},
     # the copied data from data["version"]["version"] convert
     # to set the version of the exclusive version folder
@@ -860,8 +880,13 @@ def format_asset_directory(context, directory_template):
         data["version"]["version"] = "hero"
     else:
         data["version"]["version"] = f"v{version:03d}"
-    asset_name_with_version = set_asset_name(data)
+    
+    if asset_name_template:
+        asset_name_with_version = StringTemplate(asset_name_template).format_strict(data)
+    else:
+        asset_name_with_version = set_asset_name(data)
     asset_dir = StringTemplate(directory_template).format_strict(data)
+
     return f"{IMPORT_STORAGE_PATH}/{asset_dir}", asset_name_with_version
 
 

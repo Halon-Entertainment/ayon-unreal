@@ -10,8 +10,10 @@ from .pipeline import (
     create_publish_instance,
     imprint,
     ls_inst,
+)
+from .constants import (
     UNREAL_VERSION,
-    IMPORT_STORAGE_PATH
+    IMPORT_STORAGE_PATH,
 )
 from .lib import remove_loaded_asset
 from ayon_core.lib import (

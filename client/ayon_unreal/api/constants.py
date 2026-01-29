@@ -7,6 +7,8 @@ AYON_CONTAINERS = "AyonContainers"
 AYON_ROOT_DIR = "/Game/Ayon"
 AYON_ASSET_DIR = "/Game/Ayon/Assets"
 CONTEXT_CONTAINER = "Ayon/context.json"
+# Halon customization: Import storage path (can be overridden via settings)
+IMPORT_STORAGE_PATH = os.getenv("AYON_UNREAL_IMPORT_PATH", "/Game/Ayon")
 _version_parts = os.getenv("AYON_UNREAL_VERSION", "0.0").split(".")
 while len(_version_parts) < 3:
     _version_parts.append("0")
