@@ -29,6 +29,7 @@ from ayon_unreal.ue_workers import (
     UEProjectGenerationWorker,
     UEPluginInstallWorker
 )
+from ayon_unreal.api.constants import AYON_ROOT_DIR
 from ayon_unreal.ui import SplashScreen
 
 
@@ -162,36 +163,17 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
     def execute(self):
         """Hook entry method."""
-        # DEBUG: Write to file for troubleshooting
-        debug_file = Path.home() / "ayon_unreal_debug.txt"
-        def debug_log(msg):
-            self.log.info(msg)
-            with open(debug_file, "a") as f:
-                f.write(f"{msg}\n")
-        
-        debug_log("=" * 50)
-        debug_log("UnrealPrelaunchHook.execute() started")
-        
-        try:
-            self._execute_impl(debug_log)
-        except Exception as e:
-            import traceback
-            debug_log(f"EXCEPTION: {type(e).__name__}: {e}")
-            debug_log(traceback.format_exc())
-            raise
-    
-    def _execute_impl(self, debug_log):
+        self._execute_impl()
+
+    def _execute_impl(self):
         # Halon: Check if unreal addon is enabled
         project_settings = self.data["project_settings"]
         unreal_settings = project_settings["unreal"]
         enabled = unreal_settings.get('enabled', True)
-        debug_log(f"unreal addon enabled = {enabled}")
         if not enabled:
-            debug_log("Returning early - addon disabled")
             return
 
         workdir = self.launch_context.env["AYON_WORKDIR"]
-        debug_log(f"workdir = {workdir}")
         anatomy = Anatomy(self.data['project_name'])
         templates = anatomy.templates
 
@@ -305,7 +287,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
             self.launch_context.env['AYON_PLUGIN_ENABLED'] = "0"
 
         use_exact_path = unreal_settings['project_setup']['use_exact_path']
-        debug_log(f"use_exact_path = {use_exact_path}")
 
         if use_exact_path:
             project_template_str = unreal_settings['project_setup']['existing_uproject_directory']
@@ -331,38 +312,29 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
         self.launch_context.env["AYON_UNREAL_VERSION"] = engine_version
         self.launch_context.env["AYON_UNREAL_PROJECT_PATH"] = project_path.as_posix()
-        import_storage_path = unreal_settings.get("import_storage_path", "/Game/Ayon")
+        import_storage_path = unreal_settings.get("import_storage_path", AYON_ROOT_DIR)
         if import_storage_path:
             self.launch_context.env["AYON_UNREAL_IMPORT_PATH"] = import_storage_path
-            debug_log(f"AYON_UNREAL_IMPORT_PATH = {import_storage_path}")
 
-        debug_log(f"project_file = {project_file}")
-        debug_log(f"project_file.is_file() = {project_file.is_file()}")
         if not project_file.is_file():
-            debug_log("Project file does not exist, entering creation block...")
 
             # Get project settings -> allow project creation
             current_project = self.launch_context.data['project_entity']['name']
             unreal_settings = get_project_settings(current_project).get("unreal")
             allow_project_creation = unreal_settings["project_setup"].get(
             "allow_project_creation")
-            debug_log(f"allow_project_creation = {allow_project_creation}")
             # add the project template options
             # add the custom path for the existing project
             if allow_project_creation:
                 existing_uproject_directory = Path(
                     unreal_settings["project_setup"].get(
-                        "existing_uproject_directory") or "."
+                        "existing_uproject_directory")
                 )
-                debug_log(f"existing_uproject_directory = {existing_uproject_directory}")
-                debug_log(f"existing_uproject_directory.exists() = {existing_uproject_directory.exists()}")
-                uproject_files = list(existing_uproject_directory.glob("*.uproject")) if existing_uproject_directory.exists() else []
-                debug_log(f"uproject_files = {uproject_files}")
+                uproject_files = list(existing_uproject_directory.glob("*.uproject"))
                 if (
                     existing_uproject_directory.exists() and
                     uproject_files
                 ):
-                    debug_log("Copying existing project...")
                     self.copy_project(existing_uproject_directory, project_path)
                     # rename the project folder copied from existing_uproject directory
                     new_project_path = project_path.parent / unreal_project_name
@@ -387,18 +359,12 @@ class UnrealPrelaunchHook(PreLaunchHook):
                         f"{unreal_project_filename}"
                     ))
                 else:
-                    debug_log(f"Generating new project with exec_ue_project_gen...")
-                    debug_log(f"engine_version = {engine_version}, unreal_project_name = {unreal_project_name}")
-                    debug_log(f"engine_path = {engine_path}")
                     with tempfile.TemporaryDirectory() as temp_dir:
-                        debug_log(f"temp_dir = {temp_dir}")
                         self.exec_ue_project_gen(engine_version,
                                                  unreal_project_name,
                                                  engine_path,
                                                  Path(temp_dir))
-                        debug_log("exec_ue_project_gen completed, copying project...")
                         self.copy_project(Path(temp_dir), project_path)
-                        debug_log("Project copied successfully")
 
             # if the template path has been found with unreal project
             # copy that existing project to ayon work directory
@@ -414,11 +380,9 @@ class UnrealPrelaunchHook(PreLaunchHook):
                 )
                 raise ApplicationLaunchFailed(msg)
             else:
-                debug_log("Returning early - project doesn't exist, allow_project_creation=False, force_existing_project=False")
                 return
 
         # Append the project file to launch arguments
-        debug_log(f"Appending project file to launch_args: {project_file.as_posix()}")
         self.launch_context.launch_args.append(
             f"\"{project_file.as_posix()}\"")
 

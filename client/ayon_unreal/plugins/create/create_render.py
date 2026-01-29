@@ -7,10 +7,8 @@ from ayon_unreal.api.pipeline import (
     UNREAL_VERSION,
     create_folder,
     get_subsequences,
-    anatomy,
-    context_tools,
-    IMPORT_STORAGE_PATH
 )
+from ayon_unreal.api.constants import AYON_ROOT_DIR
 from ayon_unreal.api.plugin import (
     UnrealAssetCreator
 )
@@ -67,7 +65,7 @@ class CreateRender(UnrealAssetCreator):
         # If the option to create a new level sequence is selected,
         # create a new level sequence and a master level.
 
-        root = f"{IMPORT_STORAGE_PATH}/{context_tools.get_project_settings(anatomy.Anatomy().project_name)['unreal']['sequence_import_root']}"
+        root = f"{AYON_ROOT_DIR}/Sequences"
 
         # Create a new folder for the sequence in root
         sequence_dir_name = create_folder(root, product_name)
@@ -163,12 +161,12 @@ class CreateRender(UnrealAssetCreator):
                 # The asset name is the the third element of the path which
                 # contains the map.
                 # To take the asset name, we remove from the path the prefix
-                # "/Game/Ayon/" and then we split the path by "/".
+                # "{AYON_ROOT_DIR}/" and then we split the path by "/".
                 sel_path = selected_asset_path
                 asset_name = sel_path.replace(
-                    "/Game/Ayon/Sequences/", "").split("/")[0]
+                    f"{AYON_ROOT_DIR}/Sequences/", "").split("/")[0]
 
-                search_path = f"/Game/Ayon/Sequences/{asset_name}"
+                search_path = f"{AYON_ROOT_DIR}/Sequences/{asset_name}"
             else:
                 search_path = Path(selected_asset_path).parent.as_posix()
 
@@ -336,7 +334,7 @@ class CreateRender(UnrealAssetCreator):
             list: List of render preset names.
         """
         all_assets = unreal.EditorAssetLibrary.list_assets(
-            "/Game/Ayon",
+            AYON_ROOT_DIR,
             recursive=True,
             include_folder=True,
         )

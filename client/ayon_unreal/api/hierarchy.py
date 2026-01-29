@@ -6,22 +6,19 @@ from ayon_core import (
     resources,
     style
 )
-from ayon_core.pipeline import (
-    get_current_project_name,
-)
-
+from ayon_core.pipeline import get_current_project_name
 from ayon_core.tools.utils import (
     show_message_dialog,
     PlaceholderLineEdit,
     SquareButton,
-    SimpleFoldersWidget
 )
+from ayon_core.tools.utils import SimpleFoldersWidget
 
 from ayon_unreal.api.pipeline import (
     generate_sequence,
     set_sequence_hierarchy,
 )
-from ayon_unreal.api.constants import IMPORT_STORAGE_PATH
+from ayon_unreal.api.constants import AYON_ROOT_DIR
 
 import unreal
 
@@ -314,7 +311,7 @@ def build_sequence_hierarchy():
 
     project = get_current_project_name()
 
-    sequence_path = f"{IMPORT_STORAGE_PATH}/"
+    sequence_path = f"{AYON_ROOT_DIR}/"
 
     folder_selector = FolderSelector(project=project)
 

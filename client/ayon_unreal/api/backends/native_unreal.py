@@ -2,10 +2,10 @@ import semver
 from ayon_unreal.api.backends.base import UnrealBackend
 import unreal
 
-from ayon_unreal.api.constants import UNREAL_VERSION
+from ayon_unreal.api.constants import AYON_ROOT_DIR, UNREAL_VERSION
 
 def create_base_asset_container(container_name):
-    container_path = "/Game/Ayon/AyonContainerTypes"
+    container_path = f"{AYON_ROOT_DIR}/AyonContainerTypes"
     container_full_path = f"{container_path}/{container_name}"
     asset_exists = unreal.EditorAssetLibrary.does_asset_exist(container_full_path)
 
@@ -31,25 +31,9 @@ def create_base_asset_container(container_name):
 class NativeUnrealBackend(UnrealBackend):
     @staticmethod
     def install():
-        from pathlib import Path
-        debug_file = Path.home() / "ayon_unreal_startup_debug.txt"
-        def debug_log(msg):
-            print(f"[AYON NATIVE] {msg}")
-            with open(debug_file, "a") as f:
-                f.write(f"{msg}\n")
-        
-        debug_log("NativeUnrealBackend.install() called")
-        try:
-            # Deferred import to avoid circular import
-            debug_log("Importing init_ayon_menu...")
-            from ayon_unreal.api.menu import init_ayon_menu
-            debug_log("Calling init_ayon_menu()...")
-            init_ayon_menu()
-            debug_log("init_ayon_menu() completed")
-        except Exception as e:
-            import traceback
-            debug_log(f"Error in install: {e}")
-            debug_log(traceback.format_exc())
+        # Deferred import to avoid circular import
+        from ayon_unreal.api.menu import init_ayon_menu
+        init_ayon_menu()
 
         if UNREAL_VERSION >= semver.VersionInfo(5, 6, 0):
             create_base_asset_container('AyonAssetContainer')
@@ -58,7 +42,10 @@ class NativeUnrealBackend(UnrealBackend):
     @staticmethod
     def ls():
         ar = unreal.AssetRegistryHelpers.get_asset_registry()
-        container_class = unreal.load_class(None, '/Game/Ayon/AyonContainerTypes/AyonAssetContainer.AyonAssetContainer_C')
+        container_class = unreal.load_class(
+            None,
+            f"{AYON_ROOT_DIR}/AyonContainerTypes/AyonAssetContainer.AyonAssetContainer_C"
+        )
         class_path = unreal.TopLevelAssetPath(container_class.get_path_name())
         # UE 5.1 changed how class name is specified
         ayon_containers = ar.get_assets_by_class(class_path, True)
@@ -69,7 +56,10 @@ class NativeUnrealBackend(UnrealBackend):
     @staticmethod
     def ls_inst():
         ar = unreal.AssetRegistryHelpers.get_asset_registry()
-        container_class = unreal.load_class(None, '/Game/Ayon/AyonContainerTypes/AyonPublishInstance.AyonPublishInstance_C')
+        container_class = unreal.load_class(
+            None,
+            f"{AYON_ROOT_DIR}/AyonContainerTypes/AyonPublishInstance.AyonPublishInstance_C"
+        )
         class_path = unreal.TopLevelAssetPath(container_class.get_path_name())
         # UE 5.1 changed how class name is specified
         instances = ar.get_assets_by_class(class_path, True)
@@ -80,7 +70,8 @@ class NativeUnrealBackend(UnrealBackend):
     @staticmethod
     def create_container(container: str, path: str) -> unreal.Object:
         data_asset_class = unreal.load_class(
-            None, "/Game/Ayon/AyonContainerTypes/AyonAssetContainer.AyonAssetContainer_C"
+            None,
+            f"{AYON_ROOT_DIR}/AyonContainerTypes/AyonAssetContainer.AyonAssetContainer_C"
         )
         print(f"Creating Ayon Container {container}")
         tools = unreal.AssetToolsHelpers().get_asset_tools()
@@ -95,7 +86,8 @@ class NativeUnrealBackend(UnrealBackend):
     @staticmethod
     def create_publish_instance(instance: str, path:str) -> unreal.Object:
         data_asset_class = unreal.load_class(
-            None, "/Game/Ayon/AyonContainerTypes/AyonPublishInstance.AyonPublishInstance_C"
+            None,
+            f"{AYON_ROOT_DIR}/AyonContainerTypes/AyonPublishInstance.AyonPublishInstance_C"
         )
         print(f"Creating Ayon Container {instance}")
         tools = unreal.AssetToolsHelpers().get_asset_tools()
