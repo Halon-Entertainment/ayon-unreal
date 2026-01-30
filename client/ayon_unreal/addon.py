@@ -12,6 +12,9 @@ class UnrealAddon(AYONAddon, IHostAddon):
     version = __version__
     host_name = "unreal"
 
+    def initialize(self, settings):
+        return super().initialize(settings)
+
     def get_global_environments(self):
         return {
             "AYON_UNREAL_ROOT": UNREAL_ADDON_ROOT,
@@ -46,23 +49,27 @@ class UnrealAddon(AYONAddon, IHostAddon):
             UNREAL_ADDON_ROOT, "integration", f"UE_{ue_version}", "Ayon"
         )
         if not Path(unreal_plugin_path).exists():
-            if compatible_versions := get_compatible_integration(
+            compatible_versions = get_compatible_integration(
                 ue_version, Path(UNREAL_ADDON_ROOT) / "integration"
-            ):
+            )
+            if compatible_versions:
                 unreal_plugin_path = compatible_versions[-1] / "Ayon"
                 unreal_plugin_path = unreal_plugin_path.as_posix()
 
         if not env.get("AYON_UNREAL_PLUGIN"):
             env["AYON_UNREAL_PLUGIN"] = unreal_plugin_path
 
+
         # Set default environments if are not set via settings
+        startup_path = Path(UNREAL_ADDON_ROOT) / 'startup'
         defaults = {
             "AYON_LOG_NO_COLORS": "1",
-            "UE_PYTHONPATH": os.environ.get("PYTHONPATH", ""),
+            "UE_PYTHONPATH": os.environ.get("PYTHONPATH", "") + os.pathsep + startup_path.as_posix(),
         }
         for key, value in defaults.items():
             if not env.get(key):
                 env[key] = value
+
 
     def get_launch_hook_paths(self, app):
         if app.host_name != self.host_name:

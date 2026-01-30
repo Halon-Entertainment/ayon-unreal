@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 """Package declaring AYON addon 'unreal' version."""
-__version__ = "0.2.8-halon-0.2.2"
+__version__ = "0.2.15-halon+dev"

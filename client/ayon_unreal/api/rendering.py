@@ -1,4 +1,6 @@
 import os
+import ast
+from typing import Optional
 
 import unreal
 
@@ -20,7 +22,7 @@ SUPPORTED_EXTENSION_MAP = {
 
 
 def _queue_finish_callback(exec, success):
-    unreal.log("Render completed. Success: " + str(success))
+    unreal.log(f"Render completed. Success: {str(success)}")
 
     # Delete our reference so we don't keep it alive.
     global executor
@@ -37,28 +39,65 @@ def _job_finish_callback(job, success):
     unreal.log("Individual job completed.")
 
 
-def get_render_config(project_name, project_settings=None):
+def get_render_config(
+        project_name: str,
+        render_preset: Optional[str] = None,
+        project_render_settings=None):
     """Returns Unreal asset from render config.
 
     Expects configured location of render config set in Settings. This path
-    must contain stored render config in Unreal project
+    must contain stored render config in Unreal project.
+
+    Render config in the settings are deprecated, use render preset
+    on the instance instead.
+
     Args:
         project_name (str):
-        project_settings (dict): Settings from get_project_settings
-    Returns
+        render_preset (str): Name of the render preset to
+            use from instance.
+        project_settings (dict): Project render settings from
+            get_project_settings.
+
+    Returns:
         (str, uasset): path and UAsset
+
     Raises:
         RuntimeError if no path to config is set
-    """
-    if not project_settings:
-        project_settings = get_project_settings(project_name)
 
+    """
     ar = unreal.AssetRegistryHelpers.get_asset_registry()
-    config_path = project_settings["unreal"]["render_config_path"]
+    config = None
+    config_path = None
+
+    if render_preset:
+        asset_filter = unreal.ARFilter(
+            class_names=["MoviePipelinePrimaryConfig"],
+            recursive_paths=True,
+        )
+        render_presets = ar.get_assets(asset_filter)
+        for preset in render_presets:
+            if preset.asset_name == render_preset:
+                config = preset.get_asset()
+                config_path = preset.package_path
+                break
+
+    if config:
+        unreal.log(f"Using render preset {render_preset}")
+        return config_path, config
+
+    unreal.log(
+        "No render preset found on instance, "
+        "falling back to project settings")
+
+    if not project_render_settings:
+        project_settings = get_project_settings(project_name)
+        project_render_settings = project_settings["unreal"]["unreal_setup"]
+
+    config_path = project_render_settings["render_config_path"]
 
     if not config_path:
         raise RuntimeError("Please provide location for stored render "
-            "config in `ayon+settings://unreal/render_config_path`")
+            "config in `ayon+settings://unreal/render_setup/render_config_path`")
 
     unreal.log(f"Configured config path {config_path}")
     if not unreal.EditorAssetLibrary.does_asset_exist(config_path):
@@ -117,7 +156,11 @@ def start_rendering():
     # instances = pipeline.ls_inst()
     instances = [
         a for a in assets
-        if a.get_class().get_name() == "AyonPublishInstance"]
+        if a.get_class().get_name() in (
+            "AyonPublishInstance",
+            "AyonPublishInstance_C",
+        )
+    ]
     if not instances:
         show_message_dialog(
             title="No AyonPublishInstance selected",
@@ -152,13 +195,24 @@ def start_rendering():
     ar = unreal.AssetRegistryHelpers.get_asset_registry()
 
     project_settings = get_project_settings(project_name)
-    _, config = get_render_config(project_name, project_settings)
+    render_settings = project_settings["unreal"]["render_setup"]
+
 
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     current_level = les.get_current_level()
     current_level_name = current_level.get_outer().get_path_name()
 
     for i in inst_data:
+        # for some reason the instance data has strings, convert them
+        # back to their original types
+        render_preset = ast.literal_eval(i["creator_attributes"]).get(
+            "render_preset"
+        )
+
+        _, config = get_render_config(
+            project_name, render_preset, render_settings)
+
+
         sequence = ar.get_asset_by_object_path(i["sequence"]).get_asset()
 
         sequences = [{
@@ -177,18 +231,22 @@ def start_rendering():
             subscenes = pipeline.get_subsequences(seq.get('sequence'))
 
             if subscenes:
-                for sub_seq in subscenes:
-                    sequences.append({
+                sequences.extend(
+                    {
                         "sequence": sub_seq.get_sequence(),
-                        "output": (f"{seq.get('output')}/"
-                                   f"{sub_seq.get_sequence().get_name()}"),
+                        "output": (
+                            f"{seq.get('output')}/"
+                            f"{sub_seq.get_sequence().get_name()}"
+                        ),
                         "frame_range": (
-                            sub_seq.get_start_frame(), sub_seq.get_end_frame())
-                    })
-            else:
-                # Avoid rendering camera sequences
-                if "_camera" not in seq.get('sequence').get_name():
-                    render_list.append(seq)
+                            sub_seq.get_start_frame(),
+                            sub_seq.get_end_frame(),
+                        ),
+                    }
+                    for sub_seq in subscenes
+                )
+            elif "_camera" not in seq.get('sequence').get_name():
+                render_list.append(seq)
 
         if i["master_level"] != current_level_name:
             unreal.log_warning(
@@ -203,6 +261,8 @@ def start_rendering():
             job.sequence = unreal.SoftObjectPath(i["master_sequence"])
             job.map = unreal.SoftObjectPath(i["master_level"])
             job.author = "Ayon"
+
+            job.set_configuration(config)
 
             # If we have a saved configuration, copy it to the job.
             if config:
@@ -229,8 +289,8 @@ def start_rendering():
             job_config.find_or_add_setting_by_class(
                 unreal.MoviePipelineDeferredPassBase)
 
-            render_format = project_settings.get("unreal").get("render_format",
-                                                               "png")
+            render_format = render_settings.get("render_format",
+                                                "png")
 
             set_output_extension_from_settings(render_format,
                                                job_config)
@@ -239,9 +299,7 @@ def start_rendering():
     if queue.get_jobs():
         global executor
         executor = unreal.MoviePipelinePIEExecutor()
-
-        preroll_frames = project_settings.get("unreal").get("preroll_frames",
-                                                            0)
+        preroll_frames = render_settings.get("preroll_frames", 0)
 
         settings = unreal.MoviePipelinePIEExecutorSettings()
         settings.set_editor_property(

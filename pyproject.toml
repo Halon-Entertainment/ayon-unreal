@@ -5,10 +5,11 @@
 
 [tool.poetry]
 name = "ayon-unreal"
-version = "0.2.2"
+version = "0.2.15-halon+dev"
 description = "Unreal Engine Integration Addon for AYON"
 authors = ["Ynput Team <team@ynput.io>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.9.1,<3.12"
@@ -18,7 +19,6 @@ python = ">=3.9.1,<3.12"
 ruff = "^0.3.3"
 pre-commit = "^3.6.2"
 codespell = "^2.2.6"
-
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

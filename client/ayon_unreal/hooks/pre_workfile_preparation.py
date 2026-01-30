@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """Hook to launch Unreal and prepare projects."""
-import os
 import copy
+import json
+import os
+import pathlib
+import platform
 import shutil
 import tempfile
 from pathlib import Path
 
-from qtpy import QtCore
+from qtpy import QtCore, QtWidgets
 
 from ayon_core import resources
 from ayon_applications import (
@@ -15,9 +18,9 @@ from ayon_applications import (
     LaunchTypes,
 )
 from ayon_core.pipeline.anatomy.anatomy import Anatomy
+from ayon_core.pipeline.anatomy.templates import AnatomyStringTemplate
 from ayon_core.pipeline.template_data import get_template_data
 from ayon_core.settings import get_project_settings
-from ayon_core.pipeline import get_current_project_name
 from ayon_core.pipeline.workfile import get_workfile_template_key
 import ayon_unreal.lib as unreal_lib
 from ayon_unreal.ue_workers import (
@@ -25,6 +28,9 @@ from ayon_unreal.ue_workers import (
     UEPluginInstallWorker
 )
 from ayon_unreal.ui import SplashScreen
+
+# Inline constant - can't import from ayon_unreal.api as it requires 'unreal' module
+AYON_ROOT_DIR = "/Game/Ayon"
 
 
 class UnrealPrelaunchHook(PreLaunchHook):
@@ -41,7 +47,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         self.signature = f"( {self.__class__.__name__} )"
 
     def _get_work_filename(self):
@@ -80,6 +85,8 @@ class UnrealPrelaunchHook(PreLaunchHook):
     def exec_plugin_install(self, engine_path: Path, env: dict = None):
         # set up the QThread and worker with necessary signals
         env = env or os.environ
+        if not QtWidgets.QApplication.instance():
+            QtWidgets.QApplication(sys.argv)
         q_thread = QtCore.QThread()
         ue_plugin_worker = UEPluginInstallWorker()
 
@@ -117,6 +124,8 @@ class UnrealPrelaunchHook(PreLaunchHook):
             f"{self.signature} Creating unreal "
             f"project [ {unreal_project_name} ]"
         ))
+        if not QtWidgets.QApplication.instance():
+            QtWidgets.QApplication(sys.argv)
 
         q_thread = QtCore.QThread()
         ue_project_worker = UEProjectGenerationWorker()
@@ -152,10 +161,11 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
     def execute(self):
         """Hook entry method."""
-
-        project_settings = self.data['project_settings']
-        unreal_settings = project_settings['unreal']
-        if not unreal_settings['enabled']:
+        # Halon: Check if unreal addon is enabled
+        project_settings = self.data["project_settings"]
+        unreal_settings = project_settings["unreal"]
+        enabled = unreal_settings.get('enabled', True)
+        if not enabled:
             return
 
         workdir = self.launch_context.env["AYON_WORKDIR"]
@@ -183,7 +193,7 @@ class UnrealPrelaunchHook(PreLaunchHook):
         engine_version = self.app_name.split("/")[-1].replace("-", ".")
         try:
             if int(engine_version.split(".")[0]) < 4 and \
-                    int(engine_version.split(".")[1]) < 26:
+                        int(engine_version.split(".")[1]) < 26:
                 raise ApplicationLaunchFailed((
                     f"{self.signature} Old unsupported version of UE "
                     f"detected - {engine_version}"))
@@ -205,7 +215,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
         # of the project name. This is because project name is then used
         # in various places inside c++ code and there variable names cannot
         # start with non-alpha. We append 'P' before project name to solve it.
-        # 😱
         if not unreal_project_name[:1].isalpha():
             self.log.warning((
                 "Project name doesn't start with alphabet "
@@ -229,51 +238,195 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
         # engine_path points to the specific Unreal Engine root
         # so, we are going up from the executable itself 3 levels.
-        engine_path: Path = Path(executable).parents[3]
+        # on macOS it's 6 levels up as the executable lives under
+        # ./UnrealEditor.app/Contents/MacOS/UnrealEditor
+        if platform.system().lower() == "darwin":
+            engine_path: Path = Path(executable).parents[6]
+        else:
+            engine_path: Path = Path(executable).parents[3]
 
-        # Check if new env variable exists, and if it does, if the path
-        # actually contains the plugin. If not, install it.
+        # Halon: Check for built plugin
+        built_plugin_path = self.launch_context.env.get(
+            "AYON_BUILT_UNREAL_PLUGIN", None)
 
+        current_project = self.launch_context.data['project_entity']['name']
+        unreal_settings = self.launch_context.data["project_settings"]["unreal"]
+        use_plugin = unreal_settings["project_setup"]["use_plugin"]
 
-        project_file = project_path / unreal_project_filename
-        self.log.debug(project_file)
+        self.log.debug(f"Project Name {current_project}")
+        self.log.debug(f"Use Plugin = {use_plugin}")
+
+        if use_plugin:
+            if unreal_lib.check_built_plugin_existance(built_plugin_path):
+                self.log.info((
+                    f"{self.signature} using existing built Ayon plugin from "
+                    f"{built_plugin_path}"
+                ))
+                unreal_lib.copy_built_plugin(engine_path, Path(built_plugin_path))
+            else:
+                # Set "AYON_UNREAL_PLUGIN" to current process environment for
+                # execution of `create_unreal_project`
+                env_key = "AYON_UNREAL_PLUGIN"
+                if self.launch_context.env.get(env_key):
+                    self.log.info((
+                        f"{self.signature} using Ayon plugin from "
+                        f"{self.launch_context.env.get(env_key)}"
+                    ))
+                if self.launch_context.env.get(env_key):
+                    os.environ[env_key] = self.launch_context.env[env_key]
+
+                if not unreal_lib.check_plugin_existence(engine_path):
+                    self.exec_plugin_install(engine_path)
+                self.launch_context.env['AYON_PLUGIN_ENABLED'] = "1"
+        else:
+            self.launch_context.env['AYON_PLUGIN_ENABLED'] = "0"
+
+        use_exact_path = unreal_settings['project_setup']['use_exact_path']
+
+        if use_exact_path:
+            project_template_str = unreal_settings['project_setup']['existing_uproject_directory']
+            anatomy = self.launch_context.data["anatomy"]
+            project_template = AnatomyStringTemplate(anatomy.templates_obj, project_template_str)
+            launch_context = self.launch_context.data
+            template_data = get_template_data(
+                project_entity=launch_context["project_entity"],
+                folder_entity=launch_context["folder_entity"],
+                task_entity=launch_context["task_entity"],
+            )
+            template_data.update({
+                'root': anatomy.roots
+            })
+
+            project_file = pathlib.Path(project_template.format_strict(template_data))
+            project_path = project_file.parent
+            self.log.info(f"Using exact path: {project_file}")
+        else:
+            project_file = project_path / unreal_project_filename
+
+        self.launch_context.env["AYON_UNREAL_VERSION"] = engine_version
+        self.launch_context.env["AYON_UNREAL_PROJECT_PATH"] = project_path.as_posix()
+        import_storage_path = unreal_settings.get("import_storage_path", AYON_ROOT_DIR)
+        if import_storage_path:
+            self.launch_context.env["AYON_UNREAL_IMPORT_PATH"] = import_storage_path
 
         if not project_file.is_file():
 
-            #Get project settings -> allow project creation
-            current_project = get_current_project_name()
+            # Get project settings -> allow project creation
+            current_project = self.launch_context.data['project_entity']['name']
             unreal_settings = get_project_settings(current_project).get("unreal")
             allow_project_creation = unreal_settings["project_setup"].get(
             "allow_project_creation")
+            # add the project template options
+            # add the custom path for the existing project
             if allow_project_creation:
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    self.exec_ue_project_gen(engine_version,
-                                             unreal_project_name,
-                                             engine_path,
-                                             Path(temp_dir))
-                    try:
-                        self.log.info((
-                            f"Moving from {temp_dir} to "
-                            f"{project_path.as_posix()}"
-                        ))
-                        shutil.copytree(
-                            temp_dir, project_path, dirs_exist_ok=True)
-
-                    except shutil.Error as e:
-                        raise ApplicationLaunchFailed((
-                            f"{self.signature} Cannot copy directory {temp_dir} "
-                            f"to {project_path.as_posix()} - {e}"
-                        )) from e
-            else:
-                raise ApplicationLaunchFailed(
-                    f"Could not open project; Project file not found.\n\n"
-                    f"'{project_path.as_posix()}' \n\n"
-                    f"Please contact administrator.\n"
-                    f"Make sure the project is in the correct folder. Or enable 'allow project creation' in studio settings"
+                existing_uproject_directory = Path(
+                    unreal_settings["project_setup"].get(
+                        "existing_uproject_directory")
                 )
+                uproject_files = list(existing_uproject_directory.glob("*.uproject"))
+                if (
+                    existing_uproject_directory.exists() and
+                    uproject_files
+                ):
+                    self.copy_project(existing_uproject_directory, project_path)
+                    # rename the project folder copied from existing_uproject directory
+                    new_project_path = project_path.parent / unreal_project_name
+                    project_path.rename(new_project_path)
 
-        self.launch_context.env["AYON_UNREAL_VERSION"] = engine_version
-        # Append project file to launch arguments
-        self.log.debug(f"Launch Path: {project_file.as_posix()}")
+                    # find the copied uproject file in the new project directory
+                    copied_uproject_files = list(new_project_path.glob("*.uproject"))
+                    if len(copied_uproject_files) != 1:
+                        raise ApplicationLaunchFailed(
+                            f"{self.signature} Expected exactly one .uproject file in "
+                            f"{new_project_path}, but found {len(copied_uproject_files)}. "
+                            "Please check the project directory."
+                        )
+                    copied_uproject_file = copied_uproject_files[0]
+                    # set the correct engine version on the copied file
+                    self.set_engine_version(copied_uproject_file, engine_version)
+
+                    # rename the copied uproject file to match the expected filename
+                    copied_uproject_file.rename(new_project_path / unreal_project_filename)
+                    self.log.info((
+                        f"{self.signature} Renamed {copied_uproject_file.name} to "
+                        f"{unreal_project_filename}"
+                    ))
+                else:
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        self.exec_ue_project_gen(engine_version,
+                                                 unreal_project_name,
+                                                 engine_path,
+                                                 Path(temp_dir))
+                        self.copy_project(Path(temp_dir), project_path)
+
+            # if the template path has been found with unreal project
+            # copy that existing project to ayon work directory
+            elif unreal_settings["project_setup"].get(
+                    "force_existing_project"):
+                msg = (
+                    "Could not open project; Project file not found.\n\n"
+                    f"'{project_path.as_posix()}' \n\n"
+                    "Please contact administrator.\n"
+                    "Make sure the project is in the correct folder. "
+                    "Or enable 'allow project creation' in studio "
+                    "settings."
+                )
+                raise ApplicationLaunchFailed(msg)
+            else:
+                return
+
+        # Append the project file to launch arguments
         self.launch_context.launch_args.append(
             f"\"{project_file.as_posix()}\"")
+
+    def set_engine_version(self, uproject_path: Path, new_version: str):
+        """Set the engine version in a Unreal project file.
+
+        Args:
+            uproject_path (Path): The path to the .uproject file.
+            new_version (str): The new engine version to set.
+
+        Raises:
+            FileNotFoundError: If the .uproject file does not exist.
+        """
+        if not uproject_path.is_file():
+            raise FileNotFoundError(f"File not found: {uproject_path}")
+
+        try:
+            data = json.loads(uproject_path.read_text(encoding="utf-8"))
+
+        except json.JSONDecodeError as e:
+            raise ApplicationLaunchFailed(
+                f"{self.signature} Malformed .uproject file at {uproject_path}: {e}"
+            ) from e
+
+        # Set the new engine version
+        data["EngineAssociation"] = new_version
+
+        uproject_path.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+        self.log.info(
+            f"Engine version set to '{new_version}' for {uproject_path}"
+        )
+
+    def copy_project(self, source: Path, destination: Path):
+        """Copy an Unreal project directory.
+
+        Args:
+            source (Path): The source project directory.
+            destination (Path): The destination directory.
+        """
+        try:
+            self.log.info((
+                f"Moving from {source.as_posix()} to "
+                f"{destination.as_posix()}"
+            ))
+            shutil.copytree(
+                source, destination, dirs_exist_ok=True)
+
+        except shutil.Error as e:
+            msg = (
+                f"{self.signature} Cannot copy directory {source.as_posix()} "
+                f"to {destination.as_posix()} - {e}"
+            )
+            raise ApplicationLaunchFailed(msg) from e

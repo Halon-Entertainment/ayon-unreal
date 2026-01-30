@@ -18,6 +18,7 @@ from ayon_unreal.api.pipeline import (
     generate_sequence,
     set_sequence_hierarchy,
 )
+from ayon_unreal.api.constants import AYON_ROOT_DIR
 
 import unreal
 
@@ -310,7 +311,7 @@ def build_sequence_hierarchy():
 
     project = get_current_project_name()
 
-    sequence_path = "/Game/Ayon/"
+    sequence_path = f"{AYON_ROOT_DIR}/"
 
     folder_selector = FolderSelector(project=project)
 

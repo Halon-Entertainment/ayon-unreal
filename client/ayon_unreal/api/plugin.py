@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
 import ast
 import collections
-import sys
-import six
-from abc import (
-    ABC,
-    ABCMeta,
-)
+from abc import ABC
 
 import unreal
+import ayon_api
 
 from .pipeline import (
     create_publish_instance,
@@ -16,22 +12,28 @@ from .pipeline import (
     ls_inst,
     UNREAL_VERSION
 )
+from .constants import AYON_ROOT_DIR
+from .lib import remove_loaded_asset
 from ayon_core.lib import (
     BoolDef,
-    UILabelDef
+    UILabelDef,
 )
 from ayon_core.pipeline import (
     AutoCreator,
     Creator,
     LoaderPlugin,
     CreatorError,
-    CreatedInstance
+    CreatedInstance,
+    discover_loader_plugins,
+    loaders_from_representation,
+    load_container,
+    AYON_CONTAINER_ID
 )
 
 
 class UnrealCreateLogic():
     """Universal class for logic that Unreal creators could inherit from."""
-    root = "/Game/Ayon/AyonPublishInstances"
+    root = f"{AYON_ROOT_DIR}/AyonPublishInstances"
     suffix = "_INS"
 
 
@@ -139,22 +141,21 @@ class UnrealCreateLogic():
 
             for member in pre_create_data.get("members", []):
                 obj = ar.get_asset_by_object_path(member).get_asset()
-                assets.add(obj)
+                assets.append(obj)
 
             imprint(f"{self.root}/{instance_name}",
                     instance.data_to_store())
 
             return instance
 
-        except Exception as er:
-            six.reraise(
-                CreatorError,
-                CreatorError(f"Creator error: {er}"),
-                sys.exc_info()[2])
+        except Exception as exc:
+            raise CreatorError(f"Creator error: {exc}") from exc
 
 
 class UnrealBaseAutoCreator(AutoCreator, UnrealCreateLogic):
     """Base class for Unreal auto creator plugins."""
+
+    settings_category = "unreal"
 
     def collect_instances(self):
         return self._default_collect_instances()
@@ -168,6 +169,8 @@ class UnrealBaseAutoCreator(AutoCreator, UnrealCreateLogic):
 
 class UnrealBaseCreator(UnrealCreateLogic, Creator):
     """Base class for Unreal creator plugins."""
+
+    settings_category = "unreal"
 
     def create(self, subset_name, instance_data, pre_create_data):
         self.create_unreal(subset_name, instance_data, pre_create_data)
@@ -213,11 +216,8 @@ class UnrealAssetCreator(UnrealBaseCreator):
                 instance_data,
                 pre_create_data)
 
-        except Exception as er:
-            six.reraise(
-                CreatorError,
-                CreatorError(f"Creator error: {er}"),
-                sys.exc_info()[2])
+        except Exception as exc:
+            raise CreatorError(f"Creator error: {exc}") from exc
 
     def get_pre_create_attr_defs(self):
         return [
@@ -225,7 +225,6 @@ class UnrealAssetCreator(UnrealBaseCreator):
         ]
 
 
-@six.add_metaclass(ABCMeta)
 class UnrealActorCreator(UnrealBaseCreator):
     """Base class for Unreal creator plugins based on actors."""
 
@@ -266,11 +265,8 @@ class UnrealActorCreator(UnrealBaseCreator):
                 instance_data,
                 pre_create_data)
 
-        except Exception as er:
-            six.reraise(
-                CreatorError,
-                CreatorError(f"Creator error: {er}"),
-                sys.exc_info()[2])
+        except Exception as exc:
+            raise CreatorError(f"Creator error: {exc}") from exc
 
     def get_pre_create_attr_defs(self):
         return [
@@ -281,3 +277,202 @@ class UnrealActorCreator(UnrealBaseCreator):
 class Loader(LoaderPlugin, ABC):
     """This serves as skeleton for future Ayon specific functionality"""
     pass
+
+
+class LayoutLoader(Loader):
+    """Load Layout from a JSON file"""
+
+    product_types = {"layout"}
+    representations = {"json"}
+
+    label = "Load Layout"
+    icon = "code-fork"
+    color = "orange"
+    loaded_layout_dir = "{folder[path]}/{product[name]}"
+    loaded_layout_name = "{folder[name]}_{product[name]}_{version[version]}"
+    remove_loaded_assets = False
+
+    @staticmethod
+    def _get_fbx_loader(loaders, family):
+        name = ""
+        if family in ['rig', 'skeletalMesh']:
+            name = "SkeletalMeshFBXLoader"
+        elif family in ['model', 'staticMesh']:
+            name = "StaticMeshFBXLoader"
+        elif family == 'camera':
+            name = "CameraLoader"
+
+        if name == "":
+
+            return None
+
+        for loader in loaders:
+            if loader.__name__ == name:
+                return loader
+
+        return None
+
+    @staticmethod
+    def _get_abc_loader(loaders, family):
+        name = ""
+        if family in ['rig', 'skeletalMesh']:
+            name = "SkeletalMeshAlembicLoader"
+        elif family in ['model', 'staticMesh']:
+            name = "StaticMeshAlembicLoader"
+        elif family in ["animation"]:
+            name = "AnimationAlembicLoader"
+        if name == "":
+            return None
+
+        for loader in loaders:
+            if loader.__name__ == name:
+                return loader
+
+        return None
+
+    def _transform_from_basis(self, transform, basis, unreal_import=False):
+        """Transform a transform from a basis to a new basis."""
+        # Get the basis matrix
+        basis_matrix = unreal.Matrix(
+            basis[0],
+            basis[1],
+            basis[2],
+            basis[3]
+        )
+        transform_matrix = unreal.Matrix(
+            transform[0],
+            transform[1],
+            transform[2],
+            transform[3]
+        )
+
+        new_transform = None
+        if unreal_import:
+            new_transform = transform_matrix * basis_matrix
+        else:
+            new_transform = (
+                basis_matrix.get_inverse() * transform_matrix * basis_matrix)
+
+        return new_transform.transform()
+
+    def _get_repre_entities_by_version_id(self, project_name, data, repre_extension, force_loaded=False):
+        version_ids = {
+            element.get("version")
+            for element in data
+            if element.get("representation")
+        }
+        version_ids.discard(None)
+        output = collections.defaultdict(list)
+        if not version_ids:
+            return output
+        # Extract extensions from data with backward compatibility for "ma"
+        extensions = {
+            element.get("extension", "ma")
+            for element in data
+            if element.get("representation")
+        }
+
+        # Update extensions based on the force_loaded flag
+        updated_extensions = set()
+
+        for ext in extensions:
+            if not force_loaded or repre_extension == "json":
+                if ext == "ma":
+                    updated_extensions.update({"fbx", "abc"})
+                else:
+                    updated_extensions.add(ext)
+            else:
+                updated_extensions.update({repre_extension})
+
+        repre_entities = ayon_api.get_representations(
+            project_name,
+            representation_names=updated_extensions,
+            version_ids=version_ids,
+            fields={"id", "versionId", "name"}
+        )
+        for repre_entity in repre_entities:
+            version_id = repre_entity["versionId"]
+            output[version_id].append(repre_entity)
+        return output
+
+    def imprint(
+        self,
+        context,
+        folder_path,
+        folder_name,
+        loaded_assets,
+        asset_dir,
+        asset_name,
+        container_name,
+        project_name,
+        hierarchy_dir=None
+    ):
+        data = {
+            "schema": "ayon:container-2.0",
+            "id": AYON_CONTAINER_ID,
+            "asset": folder_name,
+            "folder_path": folder_path,
+            "namespace": asset_dir,
+            "container_name": container_name,
+            "asset_name": asset_name,
+            "loader": str(self.__class__.__name__),
+            "representation": context["representation"]["id"],
+            "parent": context["representation"]["versionId"],
+            "family": context["product"]["productType"],
+            "loaded_assets": loaded_assets,
+            "project_name": project_name
+        }
+        if hierarchy_dir is not None:
+            data["master_directory"] = hierarchy_dir
+        imprint(
+            "{}/{}".format(asset_dir, container_name), data)
+
+    def _load_assets(self, instance_name, repre_id, product_type, repr_format):
+        all_loaders = discover_loader_plugins()
+        loaders = loaders_from_representation(
+            all_loaders, repre_id)
+
+        loader = None
+
+        if repr_format == 'fbx':
+            loader = self._get_fbx_loader(loaders, product_type)
+        elif repr_format == 'abc':
+            loader = self._get_abc_loader(loaders, product_type)
+
+        if not loader:
+            if repr_format == "ma":
+                msg = (
+                    f"No valid {product_type} loader found for {repre_id} ({repr_format}), "
+                    f"consider using {product_type} loader (fbx/abc) instead."
+                )
+                self.log.warning(msg)
+            else:
+                self.log.error(
+                    f"No valid loader found for {repre_id} "
+                    f"({repr_format}) "
+                    f"{product_type}")
+            return
+
+        import_options = {
+            "layout": True
+        }
+        assets = load_container(
+            loader,
+            repre_id,
+            namespace=instance_name,
+            options=import_options
+        )
+        return assets
+
+    def _remove_Loaded_asset(self, container):
+        """
+        Delete the layout. First, check if the assets loaded with the layout
+        are used by other layouts. If not, delete the assets.
+        """
+        if self.remove_loaded_assets:
+            remove_asset_confirmation_dialog = unreal.EditorDialog.show_message(
+                "The removal of the loaded assets",
+                "The layout will be removed. Do you want to delete all associated assets as well?",
+                unreal.AppMsgType.YES_NO)
+            if (remove_asset_confirmation_dialog == unreal.AppReturnType.YES):
+                remove_loaded_asset(container)
