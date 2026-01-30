@@ -29,8 +29,10 @@ from ayon_unreal.ue_workers import (
     UEProjectGenerationWorker,
     UEPluginInstallWorker
 )
-from ayon_unreal.api.constants import AYON_ROOT_DIR
 from ayon_unreal.ui import SplashScreen
+
+# Inline constant - can't import from ayon_unreal.api as it requires 'unreal' module
+AYON_ROOT_DIR = "/Game/Ayon"
 
 
 class UnrealPrelaunchHook(PreLaunchHook):
@@ -44,11 +46,9 @@ class UnrealPrelaunchHook(PreLaunchHook):
     """
     app_groups = {"unreal"}
     launch_types = {LaunchTypes.local}
-    order = 0
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         self.signature = f"( {self.__class__.__name__} )"
 
     def _get_work_filename(self):
@@ -163,9 +163,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
     def execute(self):
         """Hook entry method."""
-        self._execute_impl()
-
-    def _execute_impl(self):
         # Halon: Check if unreal addon is enabled
         project_settings = self.data["project_settings"]
         unreal_settings = project_settings["unreal"]
@@ -304,9 +301,6 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
             project_file = pathlib.Path(project_template.format_strict(template_data))
             project_path = project_file.parent
-            self.log.info(f"New Project File {project_file}")
-            if not project_file.is_file():
-                raise RuntimeError("Invalid Project Path")
         else:
             project_file = project_path / unreal_project_filename
 
