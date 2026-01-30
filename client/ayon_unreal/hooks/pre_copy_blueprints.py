@@ -31,7 +31,19 @@ class CopyBlueprints(PreLaunchHook):
 
         project_path = self.launch_context.env.get("AYON_UNREAL_PROJECT_PATH")
         if not project_path:
-            raise RuntimeError("AYON_UNREAL_PROJECT_PATH not set.")
+            project_path = self.launch_context.env.get("AYON_WORKDIR")
+            if project_path:
+                self.launch_context.env["AYON_UNREAL_PROJECT_PATH"] = project_path
+                self.log.warning(
+                    "AYON_UNREAL_PROJECT_PATH not set. "
+                    "Using AYON_WORKDIR as fallback."
+                )
+            else:
+                self.log.warning(
+                    "AYON_UNREAL_PROJECT_PATH not set and AYON_WORKDIR missing. "
+                    "Skipping blueprint copy."
+                )
+                return
         project_path = pathlib.Path(project_path)
         container_path = project_path.joinpath(
             "Content", "Ayon", "AyonContainerTypes"
