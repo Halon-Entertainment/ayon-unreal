@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 """Hook to launch Unreal and prepare projects."""
-import logging
+import copy
+import json
 import os
 import pathlib
-import sys
-import copy
+import platform
 import shutil
 import tempfile
-import platform
-import json
 from pathlib import Path
 
 from qtpy import QtCore, QtWidgets
@@ -301,6 +299,7 @@ class UnrealPrelaunchHook(PreLaunchHook):
 
             project_file = pathlib.Path(project_template.format_strict(template_data))
             project_path = project_file.parent
+            self.log.info(f"Using exact path: {project_file}")
         else:
             project_file = project_path / unreal_project_filename
 
