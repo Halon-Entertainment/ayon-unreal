@@ -72,14 +72,6 @@ class SkeletalMeshFBXLoader(plugin.Loader):
             'material_search_location',
             unreal.MaterialSearchLocation.ALL_ASSETS)
 
-        # Reuse existing materials instead of creating new ones
-        try:
-            options.texture_import_data.set_editor_property(
-                'identify_duplicate_materials', True)
-        except Exception:
-            # Property may not exist in all UE versions
-            pass
-
         task.options = options
 
         return task
