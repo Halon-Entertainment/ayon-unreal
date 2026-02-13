@@ -67,10 +67,115 @@ class SkeletalMeshFBXLoader(plugin.Loader):
             'normal_import_method',
             unreal.FBXNormalImportMethod.FBXNIM_IMPORT_NORMALS)
 
+        # Tell importer to search all project assets for duplicate materials
+        options.texture_import_data.set_editor_property(
+            'material_search_location',
+            unreal.MaterialSearchLocation.ALL_ASSETS)
+
+        # Reuse existing materials instead of creating new ones
+        try:
+            options.texture_import_data.set_editor_property(
+                'identify_duplicate_materials', True)
+        except Exception:
+            # Property may not exist in all UE versions
+            pass
+
         task.options = options
 
         return task
 
+
+    PHONG_PARENT = (
+        "/Script/Engine.Material'"
+        "/InterchangeAssets/Materials/"
+        "FBXLegacyPhongSurfaceMaterial.FBXLegacyPhongSurfaceMaterial'"
+    )
+
+    @staticmethod
+    def _is_phong_instance(material):
+        """Check if a material is a Interchange phong placeholder."""
+        if not material:
+            return False
+        if material.get_class().get_name() != "MaterialInstanceConstant":
+            return False
+        parent = material.get_editor_property("parent")
+        if not parent:
+            return False
+        return "FBXLegacyPhongSurfaceMaterial" in parent.get_path_name()
+
+    @staticmethod
+    def _find_existing_material(name, exclude_path=None):
+        """Search the asset registry for a Material or MaterialInstance.
+
+        Skips assets under exclude_path (the import dir) so we don't
+        match the phong instance the importer just created.
+        """
+        ar = unreal.AssetRegistryHelpers.get_asset_registry()
+        for class_name in ("Material", "MaterialInstanceConstant"):
+            assets = ar.get_assets_by_class(
+                unreal.TopLevelAssetPath("/Script/Engine", class_name),
+                True
+            )
+            for asset_data in assets:
+                if asset_data.asset_name != name:
+                    continue
+                path = str(asset_data.package_name)
+                # Skip materials created by this import
+                if exclude_path and path.startswith(exclude_path):
+                    continue
+                # Skip Interchange phong materials
+                if "/InterchangeAssets/" in path:
+                    continue
+                return asset_data.get_asset()
+        return None
+
+    @classmethod
+    def _assign_existing_materials(cls, mesh_path, asset_dir):
+        """Replace Interchange phong materials with existing project materials.
+
+        For each slot on the mesh, if the current material is a phong
+        placeholder, search for an existing material by slot name and
+        assign it. Deletes any leftover phong instances from asset_dir.
+        """
+        mesh = unreal.EditorAssetLibrary.load_asset(mesh_path)
+        if not mesh:
+            return
+
+        materials = mesh.get_editor_property("materials")
+        if not materials:
+            return
+
+        phong_paths = []
+        assigned = 0
+        for i, slot in enumerate(materials):
+            current_mat = slot.material_interface
+            slot_name = str(slot.material_slot_name)
+            if not slot_name:
+                continue
+
+            # Track phong instances for cleanup
+            if cls._is_phong_instance(current_mat):
+                phong_paths.append(current_mat.get_path_name())
+
+                existing = cls._find_existing_material(
+                    slot_name, exclude_path=asset_dir)
+                if existing:
+                    slot.material_interface = existing
+                    assigned += 1
+                    unreal.log(
+                        f"AYON: Replaced phong with '{slot_name}' "
+                        f"on slot {i}")
+
+        if assigned:
+            mesh.set_editor_property("materials", materials)
+            unreal.EditorAssetLibrary.save_asset(mesh_path)
+
+        # Clean up phong instances created by Interchange in asset_dir
+        for phong_path in phong_paths:
+            # Only delete if it's in our asset directory
+            pkg = phong_path.split(".")[0]
+            if pkg.startswith(asset_dir):
+                unreal.EditorAssetLibrary.delete_asset(pkg)
 
     def import_and_containerize(
         self, filepath, asset_dir, asset_name, container_name
@@ -83,6 +188,9 @@ class SkeletalMeshFBXLoader(plugin.Loader):
                 task = self.get_task(filepath, asset_dir, asset_name, False)
 
         unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+
+        # Replace Interchange phong placeholders with existing materials
+        self._assign_existing_materials(f"{asset_dir}/{asset_name}", asset_dir)
 
         if not unreal.EditorAssetLibrary.does_asset_exist(
             f"{asset_dir}/{container_name}"):
