@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+from __future__ import annotations
 from pathlib import Path
 
 import unreal
@@ -7,13 +7,14 @@ from ayon_unreal.api.pipeline import (
     UNREAL_VERSION,
     create_folder,
     get_subsequences,
-    anatomy,
-    context_tools,
-    IMPORT_STORAGE_PATH
 )
+from ayon_unreal.api.constants import AYON_ROOT_DIR
 from ayon_unreal.api.plugin import (
     UnrealAssetCreator
 )
+
+from ayon_core.pipeline.create import CreatorError
+
 from ayon_core.lib import (
     UILabelDef,
     UISeparatorDef,
@@ -29,7 +30,9 @@ class CreateRender(UnrealAssetCreator):
     identifier = "io.ayon.creators.unreal.render"
     label = "Render"
     product_type = "render"
+    product_base_type = "render"
     icon = "eye"
+    default_variants = ["Main"]
 
     def create_instance(
             self, instance_data, product_name, pre_create_data,
@@ -43,10 +46,18 @@ class CreateRender(UnrealAssetCreator):
         instance_data["frameStart"] = seq_data.get('frame_range')[0]
         instance_data["frameEnd"] = seq_data.get('frame_range')[1]
 
-        super(CreateRender, self).create(
+        super().create(
             product_name,
             instance_data,
             pre_create_data)
+
+    def update_instance(self, instance, instance_data, pre_create_data):
+        instance_data["label"] = f'instance_data.get("folderPath") - {instance_data.get("productName")}'
+        super().update_instance(
+            instance,
+            instance_data,
+            pre_create_data)
+
 
     def create_with_new_sequence(
             self, product_name, instance_data, pre_create_data
@@ -54,7 +65,7 @@ class CreateRender(UnrealAssetCreator):
         # If the option to create a new level sequence is selected,
         # create a new level sequence and a master level.
 
-        root = f"{IMPORT_STORAGE_PATH}/{context_tools.get_project_settings(anatomy.Anatomy().project_name)['unreal']['sequence_import_root']}"
+        root = f"{AYON_ROOT_DIR}/Sequences"
 
         # Create a new folder for the sequence in root
         sequence_dir_name = create_folder(root, product_name)
@@ -150,12 +161,12 @@ class CreateRender(UnrealAssetCreator):
                 # The asset name is the the third element of the path which
                 # contains the map.
                 # To take the asset name, we remove from the path the prefix
-                # "/Game/Ayon/" and then we split the path by "/".
+                # "{AYON_ROOT_DIR}/" and then we split the path by "/".
                 sel_path = selected_asset_path
                 asset_name = sel_path.replace(
-                    "/Game/Ayon/Sequences/", "").split("/")[0]
+                    f"{AYON_ROOT_DIR}/Sequences/", "").split("/")[0]
 
-                search_path = f"/Game/Ayon/Sequences/{asset_name}"
+                search_path = f"{AYON_ROOT_DIR}/Sequences/{asset_name}"
             else:
                 search_path = Path(selected_asset_path).parent.as_posix()
 
@@ -239,6 +250,10 @@ class CreateRender(UnrealAssetCreator):
                 selected_asset_path, master_seq, master_lvl, seq_data)
 
     def create(self, product_name, instance_data, pre_create_data):
+        instance_data["label"] = f'{instance_data.get("folderPath")} - {product_name}'
+        if not instance_data.get("creator_attributes"):
+            instance_data["creator_attributes"] = {}
+        instance_data["creator_attributes"]["render_target"] = pre_create_data.get("render_target")
         if pre_create_data.get("create_seq"):
             self.create_with_new_sequence(
                 product_name, instance_data, pre_create_data)
@@ -258,13 +273,12 @@ class CreateRender(UnrealAssetCreator):
             BoolDef(
                 "create_seq",
                 label="Create a new Level Sequence",
-                default=False
+                default=False,
             ),
             UILabelDef(
                 "WARNING: If you create a new Level Sequence, the current\n"
                 "level will be saved and a new Master Level will be created."
             ),
-
             EnumDef(
                 "render_target", items=rendering_targets, label="Render target"
             ),
@@ -273,25 +287,21 @@ class CreateRender(UnrealAssetCreator):
                 label="Start Frame",
                 default=0,
                 minimum=-999999,
-                maximum=999999
+                maximum=999999,
             ),
             NumberDef(
                 "end_frame",
-                label="Start Frame",
+                label="End Frame",
                 default=150,
                 minimum=-999999,
-                maximum=999999
+                maximum=999999,
             ),
             UISeparatorDef(),
             UILabelDef(
                 "The following settings are valid only if you are not\n"
                 "creating a new sequence."
             ),
-            BoolDef(
-                "use_hierarchy",
-                label="Use Hierarchy",
-                default=False
-            ),
+            BoolDef("use_hierarchy", label="Use Hierarchy", default=False),
         ]
 
     def get_instance_attr_defs(self):
@@ -299,9 +309,66 @@ class CreateRender(UnrealAssetCreator):
             "local": "Local machine rendering",
             "farm": "Farm rendering",
         }
+
+        render_presets = self.get_render_presets()
+
         return [
             EnumDef(
-                "render_target", items=rendering_targets,
-                label="Render target"
+                "render_target",
+                items=rendering_targets,
+                label="Render target",
+                default="local",
             ),
+            EnumDef(
+                "render_preset",
+                items=render_presets,
+                label="Render Preset",
+            ),
+            BoolDef("review", label="Generate review", default=True),
         ]
+
+    def get_render_presets(self) -> list[str]:
+        """Get the available render presets in the project.
+
+        Returns:
+            list: List of render preset names.
+        """
+        all_assets = unreal.EditorAssetLibrary.list_assets(
+            AYON_ROOT_DIR,
+            recursive=True,
+            include_folder=True,
+        )
+        render_presets = []
+        for uasset in all_assets:
+            asset_data = unreal.EditorAssetLibrary.find_asset_data(uasset)
+            _uasset = asset_data.get_asset()
+            if not _uasset:
+                continue
+
+            if isinstance(_uasset, unreal.MoviePipelinePrimaryConfig):
+                render_presets.append(_uasset.get_name())
+
+        if not render_presets:
+            raise CreatorError("No render presets found in the project")
+
+        self.log.debug("Adding the following render presets:")
+        for preset in render_presets:
+            self.log.debug(f" - {preset}")
+        return render_presets
+
+    def _on_value_changed(self, event):
+        for changed_item in event["changes"]:
+            instance = changed_item["instance"]
+            changes = changed_item["changes"]
+            if  (
+                instance is not None
+                and "folderPath" in changes
+                and instance.creator_identifier == self.identifier
+            ):
+                instance.data["label"] = (
+                    f'{instance.data.get("folderPath")} - '
+                    f'{instance.data.get("productName")}'
+                )
+
+    def register_callbacks(self):
+        self.create_context.add_value_changed_callback(self._on_value_changed)
