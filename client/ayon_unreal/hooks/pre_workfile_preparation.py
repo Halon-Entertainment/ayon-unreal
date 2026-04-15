@@ -301,6 +301,18 @@ class UnrealPrelaunchHook(PreLaunchHook):
             project_file = pathlib.Path(project_template.format_strict(template_data))
             project_path = project_file.parent
             self.log.info(f"Using exact path: {project_file}")
+            if not project_file.is_file():
+                raise ApplicationLaunchFailed(
+                    f"{self.signature} 'Use exact path' is enabled but the "
+                    f"resolved Unreal project file does not exist:\n\n"
+                    f"    {project_file.as_posix()}\n\n"
+                    f"Resolved from anatomy template: "
+                    f"'{project_template_str}'\n\n"
+                    "Please verify that the 'Existing uproject directory' "
+                    "template and the project anatomy roots are configured "
+                    "correctly, and that the .uproject file exists at the "
+                    "resolved path."
+                )
         else:
             project_file = project_path / unreal_project_filename
 
@@ -310,7 +322,7 @@ class UnrealPrelaunchHook(PreLaunchHook):
         if import_storage_path:
             self.launch_context.env["AYON_UNREAL_IMPORT_PATH"] = import_storage_path
 
-        if not project_file.is_file():
+        if not use_exact_path and not project_file.is_file():
 
             # Get project settings -> allow project creation
             current_project = self.launch_context.data['project_entity']['name']
