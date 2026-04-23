@@ -228,9 +228,12 @@ class CameraLoader(plugin.Loader):
         EditorLevelLibrary.save_all_dirty_levels()
         EditorLevelLibrary.load_level(master_level)
 
-        # Save all assets in the hierarchy
+        # Save only assets in the camera's own directory, not the entire
+        # hierarchy. Other products (e.g. animation rigs) may live under the
+        # same hierarchy_dir and saving them can trigger unrelated validation
+        # errors such as "Invalid USkeleton".
         asset_content = EditorAssetLibrary.list_assets(
-            hierarchy_dir, recursive=True, include_folder=False
+            asset_dir, recursive=True, include_folder=False
         )
 
         for a in asset_content:
@@ -283,9 +286,9 @@ class CameraLoader(plugin.Loader):
         EditorLevelLibrary.save_all_dirty_levels()
         EditorLevelLibrary.load_level(master_level)
 
-        # Save all assets in the hierarchy
+        # Save only camera assets — see load() comment for rationale.
         asset_content = EditorAssetLibrary.list_assets(
-            hierarchy_dir, recursive=True, include_folder=False
+            asset_dir, recursive=True, include_folder=False
         )
 
         for a in asset_content:
