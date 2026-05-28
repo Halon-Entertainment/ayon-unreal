@@ -426,8 +426,10 @@ class LayoutLoader(Loader):
         imprint(
             "{}/{}".format(asset_dir, container_name), data)
 
-    def _load_assets(self, instance_name, repre_id, product_type, repr_format):
-        all_loaders = discover_loader_plugins()
+    def _load_assets(self, instance_name, repre_id, product_type, repr_format,
+                     all_loaders=None):
+        if all_loaders is None:
+            all_loaders = discover_loader_plugins()
         loaders = loaders_from_representation(
             all_loaders, repre_id)
 
@@ -450,7 +452,7 @@ class LayoutLoader(Loader):
                     f"No valid loader found for {repre_id} "
                     f"({repr_format}) "
                     f"{product_type}")
-            return
+            return []
 
         import_options = {
             "layout": True
@@ -461,7 +463,7 @@ class LayoutLoader(Loader):
             namespace=instance_name,
             options=import_options
         )
-        return assets
+        return assets or []
 
     def _remove_Loaded_asset(self, container):
         """

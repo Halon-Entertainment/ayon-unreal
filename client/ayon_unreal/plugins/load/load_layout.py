@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Loader for layouts."""
+import collections
 import json
 from pathlib import Path
 import unreal
@@ -10,7 +11,10 @@ from unreal import (
 )
 import ayon_api
 
-from ayon_core.pipeline import get_current_project_name
+from ayon_core.pipeline import (
+    get_current_project_name,
+    discover_loader_plugins,
+)
 from ayon_core.settings import get_current_project_settings
 from ayon_unreal.api import plugin
 from ayon_unreal.api.pipeline import (
@@ -127,7 +131,6 @@ class LayoutLoader(plugin.LayoutLoader):
         with open(lib_path, "r") as fp:
             data = json.load(fp)
 
-
         if not repr_loaded:
             repr_loaded = []
 
@@ -138,6 +141,16 @@ class LayoutLoader(plugin.LayoutLoader):
         bindings_dict = {}
 
         loaded_assets = []
+
+        # Discover loader plugins once for all elements instead of per-element
+        all_loaders = discover_loader_plugins()
+
+        # Pre-group elements by version_id to avoid O(n²) inner scan
+        instances_by_version = collections.defaultdict(list)
+        for item in data:
+            version_id = item.get('version')
+            if version_id:
+                instances_by_version[version_id].append(item)
 
         repre_entities_by_version_id = self._get_repre_entities_by_version_id(
             project_name, data, loaded_extension, force_loaded=force_loaded
@@ -185,7 +198,8 @@ class LayoutLoader(plugin.LayoutLoader):
                     product_type = element.get("family")
 
                 assets = self._load_assets(
-                    instance_name, repre_id, product_type, repr_format
+                    instance_name, repre_id, product_type, repr_format,
+                    all_loaders=all_loaders
                 )
 
                 container = None
@@ -199,11 +213,9 @@ class LayoutLoader(plugin.LayoutLoader):
                     if container is not None:
                         loaded_assets.append(container.get_path_name())
 
-                instances = [
-                    item for item in data
-                    if ((item.get('version') and
-                        item.get('version') == element.get('version'))
-                        )]
+                # Use pre-grouped lookup instead of scanning all elements
+                instances = instances_by_version.get(
+                    element.get('version'), [])
 
                 for instance in instances:
                     transform = instance.get('transform_matrix')

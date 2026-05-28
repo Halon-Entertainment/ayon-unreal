@@ -4,6 +4,7 @@ from pathlib import Path
 import unreal
 from unreal import EditorLevelLibrary
 import ayon_api
+from ayon_core.pipeline import discover_loader_plugins
 from ayon_core.pipeline.load import LoadError
 from ayon_unreal.api import plugin
 from ayon_unreal.api import pipeline as upipeline
@@ -59,7 +60,8 @@ class ExistingLayoutLoader(plugin.LayoutLoader):
                 "Skipping to add spawned actor into the sequence."
             )
 
-    def _load_asset(self, repr_data, instance_name, family, extension):
+    def _load_asset(self, repr_data, instance_name, family, extension,
+                    all_loaders=None):
         repre_entity = next((repre_entity for repre_entity in repr_data
                              if repre_entity["name"] == extension), None)
         if not repre_entity or extension == "ma":
@@ -68,7 +70,8 @@ class ExistingLayoutLoader(plugin.LayoutLoader):
         repr_format = repre_entity.get('name')
         representation = repre_entity.get('id')
         assets = self._load_assets(
-            instance_name, representation, family, repr_format
+            instance_name, representation, family, repr_format,
+            all_loaders=all_loaders
         )
         return assets
 
@@ -123,6 +126,8 @@ class ExistingLayoutLoader(plugin.LayoutLoader):
         repre_entities_by_version_id = self._get_repre_entities_by_version_id(
             project_name, data, "json"
         )
+        # Discover loader plugins once for all elements
+        all_loaders = discover_loader_plugins()
         containers = []
         actors_matched = []
 
@@ -231,7 +236,8 @@ class ExistingLayoutLoader(plugin.LayoutLoader):
                 repre_entities,
                 lasset.get('instance_name'),
                 product_type,
-                extension
+                extension,
+                all_loaders=all_loaders
             )
             con = None
             for asset in assets:
