@@ -60,7 +60,17 @@ class UpdateContainerPath(InventoryAction):
             if target_container_dir:
                 target_container_dir = unreal.Paths.get_path(target_container_dir)
                 container_name = container.get("container_name")
-                data = {"namespace": target_container_dir}
+                # Carry the container identity forward. This re-imprints the
+                # container at its new content-plugin path; imprinting only
+                # "namespace" left the migrated container without a "parent"
+                # (and other identity) tag, which later crashed consumers of
+                # ls() with KeyError: 'parent' (ENG-4677).
+                data = {
+                    "namespace": target_container_dir,
+                    "parent": container.get("parent"),
+                    "representation": container.get("representation"),
+                    "loader": container.get("loader"),
+                }
                 imprint(f"{target_container_dir}/{container_name}", data)
 
                 asset_content = unreal.EditorAssetLibrary.list_assets(
