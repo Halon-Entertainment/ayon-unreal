@@ -272,10 +272,15 @@ class AnimationFBXLoader(plugin.Loader):
         containers = unreal_pipeline.ls()
         for container in containers:
             self.log.debug(f"Checking container: {container}")
-            if container["parent"] in rigs:
-                unreal.log("{}".format(container["parent"]))
+            # Containers in the scene may have been imprinted by different
+            # loaders/schemas and are not guaranteed to carry a "parent" tag.
+            # Use .get() so a container without it is skipped instead of
+            # raising KeyError and aborting the whole rig -> animation load.
+            parent = container.get("parent")
+            if parent and parent in rigs:
+                unreal.log("{}".format(parent))
                 # we found loaded version of the linked rigs
-                if container["loader"] != "SkeletalMeshFBXLoader":
+                if container.get("loader") != "SkeletalMeshFBXLoader":
                     continue
                 namespace = container["namespace"]
 
